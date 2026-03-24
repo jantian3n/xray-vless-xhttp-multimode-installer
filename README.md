@@ -29,7 +29,7 @@
 使用:
 
 ```bash
-sudo bash deploy_vless_xhttp.sh
+wget -O deploy_vless_xhttp.sh https://raw.githubusercontent.com/jantian3n/xray-vless-xhttp-multimode-installer/main/deploy_vless_xhttp.sh && chmod +x deploy_vless_xhttp.sh && sudo bash deploy_vless_xhttp.sh
 ```
 
 或:
