@@ -720,7 +720,7 @@ collect_single_reality_inputs() {
   PORT="$(prompt_port "${PORT:-443}")"
   port_maybe_busy_warning "${PORT}"
 
-  SNI="$(prompt_required "REALITY 的 SNI / serverName" "${SNI:-www.cloudflare.com}")"
+  SNI="$(prompt_required "REALITY 的 SNI / serverName" "${SNI:-download-installer.cdn.mozilla.net}")"
   UPLOAD_SNI="${SNI}"
   DOWNLOAD_SNI="${SNI}"
   REALITY_DEST="$(prompt_dest "REALITY 目标站 dest（默认跟 SNI 走 443）" "${REALITY_DEST:-${SNI}:443}")"
@@ -756,7 +756,7 @@ collect_split_dualstack_reality_inputs() {
   PORT="$(prompt_port "${PORT:-443}")"
   port_maybe_busy_warning "${PORT}"
 
-  SNI="$(prompt_required "REALITY 的 SNI / serverName" "${SNI:-www.cloudflare.com}")"
+  SNI="$(prompt_required "REALITY 的 SNI / serverName" "${SNI:-download-installer.cdn.mozilla.net}")"
   UPLOAD_SNI="${SNI}"
   DOWNLOAD_SNI="${SNI}"
   REALITY_DEST="$(prompt_dest "REALITY 目标站 dest（默认跟 SNI 走 443）" "${REALITY_DEST:-${SNI}:443}")"
@@ -791,7 +791,7 @@ collect_split_dualvps_reality_backend_inputs() {
   PORT="$(prompt_port "${PORT:-443}")"
   port_maybe_busy_warning "${PORT}"
 
-  SNI="$(prompt_required "REALITY 的 SNI / serverName" "${SNI:-www.cloudflare.com}")"
+  SNI="$(prompt_required "REALITY 的 SNI / serverName" "${SNI:-download-installer.cdn.mozilla.net}")"
   UPLOAD_SNI="${SNI}"
   DOWNLOAD_SNI="${SNI}"
   REALITY_DEST="$(prompt_dest "REALITY 目标站 dest（默认跟 SNI 走 443）" "${REALITY_DEST:-${SNI}:443}")"
