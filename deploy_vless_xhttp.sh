@@ -532,13 +532,28 @@ ensure_runtime_prereqs() {
 }
 
 fetch_latest_tag() {
-  local tag
+  local response tag
+
+  response="$(
+    curl -fsSL \
+      -H 'Accept: application/vnd.github+json' \
+      -H "User-Agent: ${SCRIPT_NAME}" \
+      "${GITHUB_API}"
+  )" || die "请求 GitHub API 失败，请检查 VPS 到 api.github.com 的连通性。"
+
   tag="$(
-    curl -fsSL "${GITHUB_API}" \
-      | sed -n 's/.*"tag_name": "\(v[^"]*\)".*/\1/p' \
+    printf '%s' "${response}" \
+      | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\(v[^"]*\)".*/\1/p' \
       | head -n 1
   )"
-  [[ -n "${tag}" ]] || die "获取 Xray 最新版本失败。"
+
+  if [[ -z "${tag}" ]]; then
+    if printf '%s' "${response}" | grep -q '"API rate limit exceeded"'; then
+      die "获取 Xray 最新版本失败：GitHub API 触发了速率限制。"
+    fi
+    die "获取 Xray 最新版本失败：GitHub API 返回中未找到 tag_name。"
+  fi
+
   printf '%s' "${tag}"
 }
 
