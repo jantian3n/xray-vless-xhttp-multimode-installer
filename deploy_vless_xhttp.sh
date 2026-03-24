@@ -606,8 +606,15 @@ generate_uuid_value() {
 generate_reality_keypair() {
   local output
   output="$("${XRAY_BIN}" x25519)"
-  REALITY_PRIVATE_KEY="$(printf '%s\n' "${output}" | awk -F': ' '/^PrivateKey: /{print $2}')"
-  REALITY_PUBLIC_KEY="$(printf '%s\n' "${output}" | awk -F': ' '/^Password \(PublicKey\): /{print $2}')"
+  REALITY_PRIVATE_KEY="$(printf '%s\n' "${output}" | awk -F': ' '/^PrivateKey: /{print $2; exit}')"
+  REALITY_PUBLIC_KEY="$(
+    printf '%s\n' "${output}" | awk -F': ' '
+      /^Password \(PublicKey\): / { print $2; exit }
+      /^Password: / { print $2; exit }
+      /^PublicKey: / { print $2; exit }
+      /^Public key: / { print $2; exit }
+    '
+  )"
 
   [[ -n "${REALITY_PRIVATE_KEY:-}" ]] || die "生成 REALITY privateKey 失败。"
   [[ -n "${REALITY_PUBLIC_KEY:-}" ]] || die "生成 REALITY publicKey 失败。"
