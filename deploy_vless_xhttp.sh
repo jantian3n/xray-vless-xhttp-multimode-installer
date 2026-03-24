@@ -333,7 +333,7 @@ choose_deploy_mode() {
   local current="${1:-single_reality}"
   local choice
 
-  cat <<'EOF'
+  cat >&2 <<'EOF'
 请选择部署模式:
 1. 单 VPS：VLESS + XHTTP + REALITY
 2. IPv6 上行 + IPv4 下行：同一 VPS 后端
@@ -370,7 +370,7 @@ choose_xhttp_mode() {
   local allow_stream_one="${2:-yes}"
   local choice
 
-  cat <<'EOF'
+  cat >&2 <<'EOF'
 请选择 XHTTP mode:
 1. auto       (推荐)
 2. packet-up
@@ -378,7 +378,7 @@ choose_xhttp_mode() {
 EOF
 
   if [[ "${allow_stream_one}" == "yes" ]]; then
-    printf '%s\n' '4. stream-one'
+    printf '%s\n' '4. stream-one' >&2
   fi
 
   while true; do
