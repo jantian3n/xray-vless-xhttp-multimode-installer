@@ -44,6 +44,7 @@ Beta 版:
 - `deploy_vless_xhttp_beta.sh` 复用稳定版底层部署逻辑，主要优化交互层
 - 在终端里优先使用 `whiptail` 提供类 GUI / TUI 菜单
 - 如果目标机器没有安装 `whiptail`，会自动回退到经典文本菜单
+- 如果你只下载了 `deploy_vless_xhttp_beta.sh`，它会自动拉取稳定版核心脚本后再启动
 
 Beta 示例:
 

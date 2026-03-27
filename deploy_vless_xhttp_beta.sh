@@ -3,10 +3,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=./deploy_vless_xhttp.sh
-source "${SCRIPT_DIR}/deploy_vless_xhttp.sh"
-
 SCRIPT_NAME="$(basename "$0")"
+BETA_LOCAL_CORE_SCRIPT="${SCRIPT_DIR}/deploy_vless_xhttp.sh"
+BETA_REMOTE_CORE_URL="${XRAY_STABLE_SCRIPT_URL:-https://raw.githubusercontent.com/jantian3n/xray-vless-xhttp-multimode-installer/main/deploy_vless_xhttp.sh}"
+BETA_BOOTSTRAP_FILE=""
 BETA_UI_MODE="${XRAY_UI_MODE:-auto}"
 BETA_WHIPTAIL_BIN=""
 BETA_GUI_READY="0"
@@ -16,6 +16,53 @@ BETA_MENU_HEIGHT=18
 BETA_MENU_WIDTH=88
 BETA_TEXT_HEIGHT=24
 BETA_TEXT_WIDTH=96
+
+cleanup_beta_bootstrap() {
+  if [[ -n "${BETA_BOOTSTRAP_FILE}" && -f "${BETA_BOOTSTRAP_FILE}" ]]; then
+    rm -f "${BETA_BOOTSTRAP_FILE}"
+  fi
+}
+
+download_beta_core_script() {
+  local target_file="$1"
+
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "${BETA_REMOTE_CORE_URL}" -o "${target_file}"
+    return 0
+  fi
+
+  if command -v wget >/dev/null 2>&1; then
+    wget -qO "${target_file}" "${BETA_REMOTE_CORE_URL}"
+    return 0
+  fi
+
+  printf '[x] 缺少 curl 或 wget，无法自动下载稳定版脚本: %s\n' "${BETA_REMOTE_CORE_URL}" >&2
+  exit 1
+}
+
+resolve_beta_core_script() {
+  if [[ -f "${BETA_LOCAL_CORE_SCRIPT}" ]]; then
+    printf '%s' "${BETA_LOCAL_CORE_SCRIPT}"
+    return 0
+  fi
+
+  BETA_BOOTSTRAP_FILE="$(mktemp)"
+
+  if ! download_beta_core_script "${BETA_BOOTSTRAP_FILE}"; then
+    rm -f "${BETA_BOOTSTRAP_FILE}"
+    BETA_BOOTSTRAP_FILE=""
+    printf '[x] 未在本地找到 deploy_vless_xhttp.sh，且自动下载失败。\n' >&2
+    printf '[x] 你可以把稳定版脚本放到同目录，或设置 XRAY_STABLE_SCRIPT_URL 指向可访问地址。\n' >&2
+    exit 1
+  fi
+
+  printf '%s' "${BETA_BOOTSTRAP_FILE}"
+}
+
+trap cleanup_beta_bootstrap EXIT
+
+# shellcheck source=./deploy_vless_xhttp.sh
+source "$(resolve_beta_core_script)"
 
 clone_function() {
   local source_name="$1"
