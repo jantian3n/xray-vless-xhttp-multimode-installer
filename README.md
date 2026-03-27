@@ -7,6 +7,7 @@
 - `deploy_vless_xhttp.sh`
 - `deploy_vless_xhttp_beta.sh`
 - `deploy_vless_xhttp_tno.py`
+- `deploy_vless_xhttp_console.sh`
 
 支持模式:
 
@@ -85,6 +86,25 @@ python3 deploy_vless_xhttp_tno.py
 ```bash
 XRAY_CORE_SCRIPT=/path/to/deploy_vless_xhttp.sh python3 deploy_vless_xhttp_tno.py
 ```
+
+纯 Bash 终端控制台:
+
+- `deploy_vless_xhttp_console.sh` 是一个独立的本地全屏终端控制台
+- 基于 `bash + ANSI + read`
+- 不启动网页，也不依赖浏览器
+- 界面主题聚焦 `Xray` 部署、服务控制和本机维护
+- 底层仍复用稳定版 `deploy_vless_xhttp.sh`
+
+运行:
+
+```bash
+sudo bash deploy_vless_xhttp_console.sh
+```
+
+说明:
+
+- 建议终端至少 `100x28`
+- 如果同目录没有稳定版脚本，它会自动拉取 `deploy_vless_xhttp.sh`
 
 注意:
 
