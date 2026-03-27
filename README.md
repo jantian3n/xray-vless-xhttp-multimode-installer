@@ -93,6 +93,9 @@ XRAY_CORE_SCRIPT=/path/to/deploy_vless_xhttp.sh python3 deploy_vless_xhttp_tno.p
 - 基于 `bash + ANSI + read`
 - 不启动网页，也不依赖浏览器
 - 界面主题聚焦 `Xray` 部署、服务控制和本机维护
+- 安装 / 重装已经内置为本地 GUI 向导
+- 部署、更新和卸载会在控制台里直接执行并显示输出
+- 控制台改成了常驻框架刷新，切换时不再每次整屏清空
 - 底层仍复用稳定版 `deploy_vless_xhttp.sh`
 
 运行:
