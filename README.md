@@ -6,6 +6,7 @@
 
 - `deploy_vless_xhttp.sh`
 - `deploy_vless_xhttp_beta.sh`
+- `deploy_vless_xhttp_tno.py`
 
 支持模式:
 
@@ -64,6 +65,25 @@ sudo apt-get update -y && sudo apt-get install -y whiptail
 
 ```bash
 XRAY_UI_THEME=default bash deploy_vless_xhttp_beta.sh
+```
+
+TNO 本地终端版:
+
+- `deploy_vless_xhttp_tno.py` 是一个独立的 `curses` 本地 GUI
+- 不启动网页服务，也不依赖浏览器
+- 风格上更偏“战略终端 / 指挥界面”，适合纯 SSH / 终端场景
+- 底层仍复用稳定版 `deploy_vless_xhttp.sh`
+
+运行:
+
+```bash
+python3 deploy_vless_xhttp_tno.py
+```
+
+如果稳定版脚本不在同目录，也可以指定:
+
+```bash
+XRAY_CORE_SCRIPT=/path/to/deploy_vless_xhttp.sh python3 deploy_vless_xhttp_tno.py
 ```
 
 注意:
