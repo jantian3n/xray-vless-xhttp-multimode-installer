@@ -8,14 +8,16 @@ BETA_LOCAL_CORE_SCRIPT="${SCRIPT_DIR}/deploy_vless_xhttp.sh"
 BETA_REMOTE_CORE_URL="${XRAY_STABLE_SCRIPT_URL:-https://raw.githubusercontent.com/jantian3n/xray-vless-xhttp-multimode-installer/main/deploy_vless_xhttp.sh}"
 BETA_BOOTSTRAP_FILE=""
 BETA_UI_MODE="${XRAY_UI_MODE:-auto}"
+BETA_UI_THEME="${XRAY_UI_THEME:-vim}"
 BETA_WHIPTAIL_BIN=""
 BETA_GUI_READY="0"
+BETA_NEWT_COLORS=""
 BETA_DIALOG_TITLE="Xray 一键部署脚本 Beta"
-BETA_BACKTITLE="VLESS + XHTTP 多模式安装器 Beta"
-BETA_MENU_HEIGHT=18
-BETA_MENU_WIDTH=88
-BETA_TEXT_HEIGHT=24
-BETA_TEXT_WIDTH=96
+BETA_BACKTITLE="[VIM] Xray Beta | VLESS + XHTTP 多模式安装器"
+BETA_MENU_HEIGHT=22
+BETA_MENU_WIDTH=92
+BETA_TEXT_HEIGHT=26
+BETA_TEXT_WIDTH=100
 
 cleanup_beta_bootstrap() {
   if [[ -n "${BETA_BOOTSTRAP_FILE}" && -f "${BETA_BOOTSTRAP_FILE}" ]]; then
@@ -85,6 +87,68 @@ beta_should_use_gui() {
   [[ "${BETA_GUI_READY}" == "1" ]]
 }
 
+beta_ui_mode_label() {
+  if [[ -n "${DEPLOY_MODE:-}" ]]; then
+    mode_label
+  else
+    printf '未部署'
+  fi
+}
+
+beta_ui_service_label() {
+  if [[ -n "${ACTIVE_SERVICE:-}" ]]; then
+    printf '%s' "${ACTIVE_SERVICE}"
+  elif [[ -n "${DEPLOY_MODE:-}" ]]; then
+    active_service_name
+  else
+    printf '-'
+  fi
+}
+
+beta_render_panel() {
+  local state="$1"
+  local title="$2"
+  local body="$3"
+  local keys="$4"
+  local mode_text
+  local service_text
+
+  mode_text="$(beta_ui_mode_label)"
+  service_text="$(beta_ui_service_label)"
+
+  cat <<EOF
++--------------------------------------------------------------+
+[$(printf '%s' "${state}" | tr '[:lower:]' '[:upper:]')] ${title}
+mode: ${mode_text}
+service: ${service_text}
+theme: ${BETA_UI_THEME}
+keys: ${keys}
++--------------------------------------------------------------+
+${body}
+EOF
+}
+
+beta_apply_theme() {
+  case "${BETA_UI_THEME}" in
+    vim)
+      BETA_NEWT_COLORS='root=green,black;window=white,black;border=green,black;title=lightgreen,black;textbox=white,black;entry=white,black;button=black,green;actbutton=black,lightgreen;checkbox=green,black;actcheckbox=black,green;compactbutton=black,green'
+      ;;
+    default|classic|"")
+      BETA_NEWT_COLORS=""
+      ;;
+    *)
+      classic_warn "未知 XRAY_UI_THEME=${BETA_UI_THEME}，将使用 vim 主题。"
+      BETA_NEWT_COLORS='root=green,black;window=white,black;border=green,black;title=lightgreen,black;textbox=white,black;entry=white,black;button=black,green;actbutton=black,lightgreen;checkbox=green,black;actcheckbox=black,green;compactbutton=black,green'
+      ;;
+  esac
+
+  if [[ -n "${BETA_NEWT_COLORS}" ]]; then
+    export NEWT_COLORS="${BETA_NEWT_COLORS}"
+  else
+    unset NEWT_COLORS || true
+  fi
+}
+
 beta_init_ui() {
   case "${BETA_UI_MODE}" in
     classic)
@@ -106,6 +170,7 @@ beta_init_ui() {
   if command -v whiptail >/dev/null 2>&1; then
     BETA_WHIPTAIL_BIN="$(command -v whiptail)"
     BETA_GUI_READY="1"
+    beta_apply_theme
     return 0
   fi
 
@@ -117,6 +182,7 @@ beta_textbox() {
   local title="$1"
   local content="$2"
   local tmp_file
+  local framed_content
 
   if ! beta_should_use_gui; then
     printf '%s\n' "${content}"
@@ -124,7 +190,8 @@ beta_textbox() {
   fi
 
   tmp_file="$(mktemp)"
-  printf '%s\n' "${content}" > "${tmp_file}"
+  framed_content="$(beta_render_panel "view" "${title}" "" "Up/Down scroll | PgUp/PgDn fast | Tab switch | Enter close")"
+  printf '%s\n\n%s\n' "${framed_content}" "${content}" > "${tmp_file}"
   "${BETA_WHIPTAIL_BIN}" \
     --backtitle "${BETA_BACKTITLE}" \
     --title "${title}" \
@@ -136,16 +203,18 @@ beta_textbox() {
 beta_msgbox() {
   local title="$1"
   local message="$2"
+  local framed_message
 
   if ! beta_should_use_gui; then
     printf '[!] %s\n' "${message}" >&2
     return 0
   fi
 
+  framed_message="$(beta_render_panel "message" "${title}" "${message}" "Enter close")"
   "${BETA_WHIPTAIL_BIN}" \
     --backtitle "${BETA_BACKTITLE}" \
     --title "${title}" \
-    --msgbox "${message}" 12 78
+    --msgbox "${framed_message}" 16 88
 }
 
 beta_inputbox() {
@@ -153,11 +222,13 @@ beta_inputbox() {
   local prompt="$2"
   local default_value="${3-}"
   local result
+  local framed_prompt
 
+  framed_prompt="$(beta_render_panel "input" "${title}" "${prompt}" "Edit value | Enter confirm | Esc cancel")"
   if result="$("${BETA_WHIPTAIL_BIN}" \
     --backtitle "${BETA_BACKTITLE}" \
     --title "${title}" \
-    --inputbox "${prompt}" 12 88 "${default_value}" \
+    --inputbox "${framed_prompt}" 18 88 "${default_value}" \
     3>&1 1>&2 2>&3)"; then
     printf '%s' "${result}"
     return 0
@@ -170,13 +241,15 @@ beta_menu() {
   local title="$1"
   local prompt="$2"
   local default_item="$3"
+  local framed_prompt
   shift 3
 
+  framed_prompt="$(beta_render_panel "normal" "${title}" "${prompt}" "Up/Down move | Tab buttons | Enter select | Esc back")"
   "${BETA_WHIPTAIL_BIN}" \
     --backtitle "${BETA_BACKTITLE}" \
     --title "${title}" \
     --default-item "${default_item}" \
-    --menu "${prompt}" "${BETA_MENU_HEIGHT}" "${BETA_MENU_WIDTH}" 9 \
+    --menu "${framed_prompt}" "${BETA_MENU_HEIGHT}" "${BETA_MENU_WIDTH}" 9 \
     "$@" \
     3>&1 1>&2 2>&3
 }
@@ -186,18 +259,20 @@ beta_yesno() {
   local prompt="$2"
   local default_choice="${3:-y}"
   local -a args=()
+  local framed_prompt
 
   if [[ "${default_choice}" == "n" ]]; then
     args+=(--defaultno)
   fi
 
+  framed_prompt="$(beta_render_panel "confirm" "${title}" "${prompt}" "Tab switch | Enter confirm | Esc cancel")"
   "${BETA_WHIPTAIL_BIN}" \
     --backtitle "${BETA_BACKTITLE}" \
     --title "${title}" \
     --yes-button "是" \
     --no-button "否" \
     "${args[@]}" \
-    --yesno "${prompt}" 12 78
+    --yesno "${framed_prompt}" 16 88
 }
 
 warn() {
@@ -259,8 +334,8 @@ choose_deploy_mode() {
   fi
 
   if choice="$(beta_menu \
-    "部署模式" \
-    "请选择当前机器要承担的角色：" \
+    "MODE SELECT" \
+    "请选择当前机器要承担的角色。" \
     "$(default_mode_number "${current}")" \
     1 "单 VPS：VLESS + XHTTP + REALITY" \
     2 "同机分离：IPv6 上行 + IPv4 下行" \
@@ -304,7 +379,7 @@ choose_xhttp_mode() {
     default_item="1"
   fi
 
-  if choice="$(beta_menu "XHTTP Mode" "请选择 XHTTP 传输模式：" "${default_item}" "${menu_items[@]}")"; then
+  if choice="$(beta_menu "XHTTP MODE" "请选择 XHTTP 传输模式。" "${default_item}" "${menu_items[@]}")"; then
     case "${choice}" in
       1) printf 'auto' ;;
       2) printf 'packet-up' ;;
@@ -358,6 +433,8 @@ beta_runtime_hint() {
 - 底层部署逻辑仍然复用稳定版脚本
 - 如果目标机器安装了 whiptail，就会显示图形化终端菜单
 - 如果没有 whiptail，会自动回退到经典文本菜单
+- 默认使用 vim 风格配色，可用 XRAY_UI_THEME=default 切回默认主题
+- 界面额外加入了 NORMAL / INPUT / VIEW / CONFIRM 风格状态栏和快捷键提示
 
 提示:
 - Debian / Ubuntu 可执行: apt-get update -y && apt-get install -y whiptail
@@ -367,8 +444,6 @@ EOF
 
 main_menu() {
   local current_state
-  local current_mode="未部署"
-  local current_service="-"
   local choice
 
   if ! beta_should_use_gui; then
@@ -378,28 +453,25 @@ main_menu() {
 
   if [[ -f "${META_FILE}" ]]; then
     load_existing_meta_if_any
-    current_mode="$(mode_label)"
-    current_service="$(active_service_name)"
   fi
 
-  current_state="当前状态:
-- 模式: ${current_mode}
-- 服务: ${current_service}
+  current_state="欢迎进入 beta 安装器。
 
-请选择要执行的操作："
+这里保留稳定版的底层逻辑，只优化终端交互层。
+请选择要执行的操作。"
 
   while true; do
     if choice="$(beta_menu \
-      "${BETA_DIALOG_TITLE}" \
+      "NORMAL" \
       "${current_state}" \
       "1" \
-      1 "安装 / 重装" \
-      2 "查看当前配置和客户端信息" \
-      3 "服务管理" \
-      4 "更新 Xray 内核" \
-      5 "卸载" \
-      6 "Beta 说明" \
-      0 "退出")"; then
+      1 "[Install] 安装 / 重装" \
+      2 "[Inspect] 查看当前配置和客户端信息" \
+      3 "[Service] 服务管理" \
+      4 "[Update] 更新 Xray 内核" \
+      5 "[Clean] 卸载" \
+      6 "[Help] Beta 说明" \
+      0 "[Quit] 退出 / :q")"; then
       case "${choice}" in
         1) configure_and_apply ;;
         2) show_current_info ;;
@@ -413,17 +485,7 @@ main_menu() {
 
       if [[ -f "${META_FILE}" ]]; then
         load_existing_meta_if_any
-        current_mode="$(mode_label)"
-        current_service="$(active_service_name)"
-      else
-        current_mode="未部署"
-        current_service="-"
       fi
-      current_state="当前状态:
-- 模式: ${current_mode}
-- 服务: ${current_service}
-
-请选择要执行的操作："
       continue
     fi
 
@@ -446,16 +508,16 @@ service_menu() {
 
   while true; do
     if choice="$(beta_menu \
-      "服务管理" \
+      "SERVICE" \
       "当前服务: ${service_name}
 
-请选择操作：" \
+请选择操作。" \
       "1" \
-      1 "查看状态" \
-      2 "启动服务" \
-      3 "重启服务" \
-      4 "停止服务" \
-      0 "返回")"; then
+      1 "[:status] 查看状态" \
+      2 "[:start] 启动服务" \
+      3 "[:restart] 重启服务" \
+      4 "[:stop] 停止服务" \
+      0 "[:back] 返回")"; then
       case "${choice}" in
         1) show_service_status ;;
         2) systemctl start "${service_name}" ; beta_msgbox "完成" "已启动 ${service_name}" ;;
