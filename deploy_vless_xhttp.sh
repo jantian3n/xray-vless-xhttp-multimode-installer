@@ -1653,31 +1653,37 @@ EOF
   done
 }
 
-case "${1:-menu}" in
-  menu)
-    main_menu
-    ;;
-  install)
-    configure_and_apply
-    ;;
-  show)
-    show_current_info
-    ;;
-  service)
-    service_menu
-    ;;
-  update-core)
-    update_core_only
-    ;;
-  uninstall)
-    uninstall_all
-    ;;
-  -h|--help|help)
-    usage
-    ;;
-  *)
-    warn "未知参数: ${1}"
-    usage
-    exit 1
-    ;;
-esac
+dispatch_cli() {
+  case "${1:-menu}" in
+    menu)
+      main_menu
+      ;;
+    install)
+      configure_and_apply
+      ;;
+    show)
+      show_current_info
+      ;;
+    service)
+      service_menu
+      ;;
+    update-core)
+      update_core_only
+      ;;
+    uninstall)
+      uninstall_all
+      ;;
+    -h|--help|help)
+      usage
+      ;;
+    *)
+      warn "未知参数: ${1}"
+      usage
+      exit 1
+      ;;
+  esac
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  dispatch_cli "$@"
+fi

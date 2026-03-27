@@ -5,6 +5,7 @@
 脚本文件:
 
 - `deploy_vless_xhttp.sh`
+- `deploy_vless_xhttp_beta.sh`
 
 支持模式:
 
@@ -36,6 +37,24 @@ wget -O deploy_vless_xhttp.sh https://raw.githubusercontent.com/jantian3n/xray-v
 
 ```bash
 sudo bash deploy_vless_xhttp.sh install
+```
+
+Beta 版:
+
+- `deploy_vless_xhttp_beta.sh` 复用稳定版底层部署逻辑，主要优化交互层
+- 在终端里优先使用 `whiptail` 提供类 GUI / TUI 菜单
+- 如果目标机器没有安装 `whiptail`，会自动回退到经典文本菜单
+
+Beta 示例:
+
+```bash
+wget -O deploy_vless_xhttp_beta.sh https://raw.githubusercontent.com/jantian3n/xray-vless-xhttp-multimode-installer/main/deploy_vless_xhttp_beta.sh && chmod +x deploy_vless_xhttp_beta.sh && sudo bash deploy_vless_xhttp_beta.sh
+```
+
+如果你想强制启用终端 GUI，建议先安装:
+
+```bash
+sudo apt-get update -y && sudo apt-get install -y whiptail
 ```
 
 注意:
