@@ -21,13 +21,13 @@ PROXY_SERVICE_NAME="xhttp-upload-proxy"
 
 NAV_IDS=(overview deploy dossier service maintenance briefing quit)
 NAV_LABELS=(
-  "Overview"
-  "Install / Reinstall"
-  "Deployment Dossier"
-  "Service Control"
-  "Maintenance"
-  "Help"
-  "Quit"
+  "总览"
+  "安装 / 重装"
+  "部署档案"
+  "服务控制"
+  "维护"
+  "帮助"
+  "退出"
 )
 
 selected_index=0
@@ -39,7 +39,7 @@ log_capacity=8
 LOG_LINES=()
 
 state_mode_id=""
-state_mode_label="Not deployed"
+state_mode_label="未部署"
 state_service_name="-"
 state_service_active="n/a"
 state_service_enabled="n/a"
@@ -56,8 +56,8 @@ state_client_link="no"
 state_client_readme="no"
 state_client_patch="no"
 state_client_outbound="no"
-state_root_note="running as non-root; deployment metadata may be hidden"
-last_dossier="No dossier loaded yet. Press Enter on Deployment Dossier to fetch details."
+state_root_note="当前不是 root，部分部署元数据可能不可见"
+last_dossier="尚未读取部署档案。进入“部署档案”后按回车可获取最新信息。"
 
 command_exists() {
   command -v "$1" >/dev/null 2>&1
@@ -92,7 +92,7 @@ download_core_script() {
     wget -qO "${target_file}" "${CORE_REMOTE_URL}"
     return 0
   fi
-  printf '[x] missing curl or wget; cannot fetch stable core script: %s\n' "${CORE_REMOTE_URL}" >&2
+  printf '[x] 缺少 curl 或 wget，无法拉取稳定版核心脚本：%s\n' "${CORE_REMOTE_URL}" >&2
   return 1
 }
 
@@ -106,7 +106,7 @@ resolve_core_script() {
   if ! download_core_script "${BOOTSTRAP_FILE}"; then
     rm -f "${BOOTSTRAP_FILE}"
     BOOTSTRAP_FILE=""
-    printf '[x] failed to find or download deploy_vless_xhttp.sh\n' >&2
+    printf '[x] 无法找到或下载 deploy_vless_xhttp.sh\n' >&2
     return 1
   fi
   CORE_SCRIPT="${BOOTSTRAP_FILE}"
@@ -224,18 +224,18 @@ service_name_from_mode() {
 
 mode_label_from_id() {
   case "$1" in
-    single_reality) printf 'Single VPS: VLESS + XHTTP + REALITY' ;;
-    split_dualstack_reality) printf 'Dualstack: IPv6 up + IPv4 down' ;;
-    split_dualvps_reality_backend) printf 'Dual VPS: backend / downlink server' ;;
-    split_dualvps_reality_proxy) printf 'Dual VPS: upload proxy' ;;
-    split_cdn_tls_backend) printf 'CDN uplink + VPS downlink: TLS + XHTTP' ;;
-    *) printf 'Not deployed' ;;
+    single_reality) printf '单 VPS：VLESS + XHTTP + REALITY' ;;
+    split_dualstack_reality) printf '同机分离：IPv6 上行 + IPv4 下行' ;;
+    split_dualvps_reality_backend) printf '双 VPS：后端 / 下行服务器' ;;
+    split_dualvps_reality_proxy) printf '双 VPS：上行代理' ;;
+    split_cdn_tls_backend) printf 'CDN 上行 + VPS 下行：TLS + XHTTP' ;;
+    *) printf '未部署' ;;
   esac
 }
 
 reset_state() {
   state_mode_id=""
-  state_mode_label="Not deployed"
+  state_mode_label="未部署"
   state_service_name="-"
   state_service_active="n/a"
   state_service_enabled="n/a"
@@ -286,12 +286,12 @@ refresh_state() {
     meta_security="${SECURITY_MODE-}"
     meta_node_name="${NODE_NAME-}"
     meta_uuid="${UUID-}"
-    state_root_note="root access available"
+    state_root_note="已具备 root 可见权限"
   else
     if [[ ${EUID} -ne 0 && -f "${META_FILE}" ]]; then
-      state_root_note="metadata hidden by file permissions; run with sudo for full visibility"
+      state_root_note="元数据受权限保护；建议用 sudo 运行以查看完整信息"
     else
-      state_root_note="no deployment metadata found yet"
+      state_root_note="尚未发现部署元数据"
     fi
   fi
 
@@ -316,7 +316,7 @@ refresh_state() {
     state_service_enabled="${enabled_out:-unknown}"
   fi
 
-  append_log "State refreshed from local deployment files."
+  append_log "已根据本地部署文件刷新状态。"
 }
 
 run_core_capture() {
@@ -334,7 +334,7 @@ suspend_for_local_console() {
   printf 'Command: %s\n' "$*"
   printf '%s\n' "$(repeat_char '=' 72)"
   "$@"
-  printf '\n[XRAY DEPLOYMENT CONSOLE] Press Enter to return...'
+  printf '\n[XRAY DEPLOYMENT CONSOLE] 按回车返回控制台...'
   read -r _
   printf '\033[?1049h\033[?25l'
   ui_ready=1
@@ -358,13 +358,13 @@ active_nav_id() {
 
 nav_summary() {
   case "$1" in
-    overview) printf 'Current local deployment state, service posture and generated artifacts.' ;;
-    deploy) printf 'Launch the stable local installer for install or reinstall operations.' ;;
-    dossier) printf 'Read the deployment summary and client-side instructions from local files.' ;;
-    service) printf 'Inspect or control the active systemd service on this host.' ;;
-    maintenance) printf 'Run update-core or uninstall from the stable local backend.' ;;
-    briefing) printf 'Keyboard help, local-only execution notes and console behavior.' ;;
-    quit) printf 'Leave the deployment console.' ;;
+    overview) printf '查看本机当前部署状态、服务态势和生成的客户端文件。' ;;
+    deploy) printf '调用稳定版本地安装器，执行安装或重装。' ;;
+    dossier) printf '读取部署摘要、客户端说明和本地部署结果。' ;;
+    service) printf '查看并控制当前机器上的 systemd 服务。' ;;
+    maintenance) printf '从稳定版本地后端执行更新内核或卸载操作。' ;;
+    briefing) printf '查看按键说明、本地执行方式和控制台行为。' ;;
+    quit) printf '退出当前部署控制台。' ;;
     *) printf '' ;;
   esac
 }
@@ -374,100 +374,100 @@ build_main_content() {
   case "${id}" in
     overview)
       cat <<EOF2
-DEPLOYMENT STATUS
-- mode: ${state_mode_label}
-- service: ${state_service_name}
-- active: ${state_service_active}
-- enabled: ${state_service_enabled}
-- permissions: ${state_root_note}
+部署状态
+- 模式：${state_mode_label}
+- 服务：${state_service_name}
+- 运行状态：${state_service_active}
+- 开机自启：${state_service_enabled}
+- 权限说明：${state_root_note}
 
-SIGNALS
-- upload: ${state_upload}
-- download: ${state_download}
-- port: ${state_port}
-- security: ${state_security}
-- node: ${state_node_name}
+部署信号
+- 上行地址：${state_upload}
+- 下行地址：${state_download}
+- 端口：${state_port}
+- 安全层：${state_security}
+- 节点名：${state_node_name}
 
-ARTIFACTS
-- meta: ${state_meta_exists}
-- config: ${state_config_exists}
-- xray bin: ${state_xray_bin}
-- client link: ${state_client_link}
-- client readme: ${state_client_readme}
-- split patch: ${state_client_patch}
-- outbound: ${state_client_outbound}
+文件情况
+- 元数据：${state_meta_exists}
+- 配置文件：${state_config_exists}
+- Xray 二进制：${state_xray_bin}
+- 分享链接：${state_client_link}
+- 客户端说明：${state_client_readme}
+- 分离补丁：${state_client_patch}
+- Outbound：${state_client_outbound}
 EOF2
       ;;
     deploy)
       cat <<'EOF2'
-INSTALL / REINSTALL
+安装 / 重装
 
-Press Enter to launch the stable deployment installer.
-The console will temporarily yield control to the shell installer and
-return here after the command finishes.
+按回车将启动稳定版本地安装器。
+控制台会临时把终端交给 Shell 安装流程，
+安装结束后再返回这里。
 
-Recommended usage:
-- run this wrapper with sudo
-- keep the terminal window reasonably large
-- use the stable script for the actual deployment logic
+建议：
+- 用 sudo 运行这个控制台
+- 保持终端窗口尽量大一些
+- 实际部署逻辑仍由稳定版脚本负责
 EOF2
       ;;
     dossier)
       cat <<EOF2
-DEPLOYMENT DOSSIER
+部署档案
 
-Preview:
+预览：
 $(printf '%s
 ' "${last_dossier}" | sed -n '1,14p')
 
-Press Enter to fetch the latest dossier from the local stable script.
+按回车从本地稳定版脚本获取最新部署档案。
 EOF2
       ;;
     service)
       cat <<EOF2
-SERVICE CONTROL
+服务控制
 
-Current unit: ${state_service_name}
-Active state: ${state_service_active}
-Enablement: ${state_service_enabled}
+当前服务：${state_service_name}
+运行状态：${state_service_active}
+开机自启：${state_service_enabled}
 
-Press Enter to open the service command menu.
+按回车进入服务命令菜单。
 EOF2
       ;;
     maintenance)
       cat <<'EOF2'
-MAINTENANCE
+维护
 
-Press Enter to open maintenance operations:
-- update xray-core
-- uninstall current deployment
+按回车进入维护菜单：
+- 更新 xray-core
+- 卸载当前部署
 
-These actions execute only on the current machine.
+这些操作只会在当前机器上执行。
 EOF2
       ;;
     briefing)
       cat <<'EOF2'
-HELP
+帮助
 
-This is a local terminal GUI built with bash, tput, ANSI and read.
-It does not launch a browser and does not expose a local web service.
+这是一个基于 bash、ANSI 和 read 的本地终端 GUI。
+它不会启动浏览器，也不会暴露本地 Web 服务。
 
-Keys:
-- j / k or arrow keys: move selection
-- Enter: execute selected action
-- r: refresh state
-- q: quit
+按键：
+- j / k 或方向键：移动选择
+- Enter：执行当前操作
+- r：刷新状态
+- q：退出
 
-Operational note:
-- deployment, update and uninstall still reuse the stable local shell script
-- run with sudo for full metadata visibility and service control
+说明：
+- 安装、更新和卸载仍复用稳定版本地 Shell 脚本
+- 建议使用 sudo，以便完整查看元数据并执行服务控制
 EOF2
       ;;
     quit)
       cat <<'EOF2'
-QUIT
+退出
 
-Press Enter to close the deployment console.
+按回车关闭当前部署控制台。
 EOF2
       ;;
   esac
@@ -478,7 +478,7 @@ draw_header() {
   clock_text="$(date '+%Y-%m-%d %H:%M:%S')"
   erase_row 0
   print_at 0 0 " $(repeat_char ' ' $((term_cols - 1)))" "$(color_header)"
-  print_at 0 1 "XRAY DEPLOYMENT CONSOLE" "$(color_header)"
+  print_at 0 1 "XRAY 部署控制台" "$(color_header)"
   print_at 0 $((term_cols - ${#clock_text} - 2)) "${clock_text}" "$(color_header)"
 }
 
@@ -489,7 +489,7 @@ draw_nav() {
   local width=30
   local i
   local row
-  draw_box "${top}" "${left}" "${height}" "${width}" "SECTIONS" "$(color_accent)"
+  draw_box "${top}" "${left}" "${height}" "${width}" "菜单" "$(color_accent)"
   for ((i = 0; i < ${#NAV_LABELS[@]}; i++)); do
     row=$((top + 2 + i * 2))
     if (( row >= top + height - 2 )); then
@@ -549,7 +549,7 @@ draw_logs() {
   local width="${term_cols}"
   local row=$((top + 1))
   local line
-  draw_box "${top}" "${left}" "${height}" "${width}" "LOG" "$(color_warn)"
+  draw_box "${top}" "${left}" "${height}" "${width}" "日志" "$(color_warn)"
   for line in "${LOG_LINES[@]}"; do
     if (( row >= top + height - 1 )); then
       break
@@ -561,7 +561,7 @@ draw_logs() {
 
 draw_footer() {
   local footer_row=$((term_lines - 1))
-  local footer_text=" j/k move | Enter execute | r refresh | q quit | local shell only "
+  local footer_text=" j/k 移动 | Enter 执行 | r 刷新 | q 退出 | 仅本地 shell "
   erase_row "${footer_row}"
   print_at "${footer_row}" 0 " $(repeat_char ' ' $((term_cols - 1)))" "$(color_focus)"
   print_at "${footer_row}" 1 "${footer_text}" "$(color_focus)"
@@ -571,10 +571,10 @@ draw_screen() {
   get_terminal_size
   printf '\033[2J\033[H'
   if (( term_cols < 100 || term_lines < 28 )); then
-    center_text 2 "Terminal too small for Xray Deployment Console" "$(color_warn)"
-    center_text 4 "Required: at least 100x28" "$(color_warn)"
-    center_text 5 "Current: ${term_cols}x${term_lines}" "$(color_warn)"
-    center_text 7 "Resize terminal, then press r. Press q to quit." "$(color_label)"
+    center_text 2 "终端窗口过小，无法正常显示 Xray 部署控制台" "$(color_warn)"
+    center_text 4 "建议尺寸：至少 100x28" "$(color_warn)"
+    center_text 5 "当前尺寸：${term_cols}x${term_lines}" "$(color_warn)"
+    center_text 7 "请调整终端大小后按 r 刷新，或按 q 退出。" "$(color_label)"
     return
   fi
   draw_header
@@ -631,7 +631,7 @@ prompt_choice() {
     top=$(((term_lines - height) / 2))
     left=$(((term_cols - width) / 2))
     draw_box "${top}" "${left}" "${height}" "${width}" "${title}" "$(color_accent)"
-    print_at $((top + 2)) $((left + 2)) "Use j/k or arrows, Enter to select, q to cancel." "$(color_label)"
+    print_at $((top + 2)) $((left + 2)) "使用 j/k 或方向键移动，Enter 选择，q 取消。" "$(color_label)"
     choice_row_start=$((top + 4))
     for ((i = 0; i < ${#options[@]}; i++)); do
       if (( i == local_index )); then
@@ -675,7 +675,7 @@ show_text_dialog() {
       fi
       print_at $((top + 2 + i)) $((left + 2)) "${lines[$((offset + i))]}" "$(color_reset)"
     done
-    print_at $((top + height - 2)) $((left + 2)) "j/k scroll | q close" "$(color_accent)"
+    print_at $((top + height - 2)) $((left + 2)) "j/k 滚动 | q 关闭" "$(color_accent)"
     key="$(read_key || true)"
     case "${key}" in
       up) (( offset > 0 )) && offset=$((offset - 1)) ;;
@@ -689,7 +689,7 @@ confirm_dialog() {
   local title="$1"
   local body="$2"
   local choice
-  if choice="$(prompt_choice "${title}" "Proceed" "Abort")"; then
+  if choice="$(prompt_choice "${title}" "继续" "取消")"; then
     if [[ "${choice}" == "0" ]]; then
       return 0
     fi
@@ -706,52 +706,52 @@ show_message() {
 service_menu() {
   local choice output
   if [[ "${state_service_name}" == "-" ]]; then
-    show_message "Service Control" "No active service is known yet. Deploy first, or refresh with sudo for full visibility."
+    show_message "服务控制" "当前还没有识别到活动服务。请先部署，或使用 sudo 刷新以查看完整信息。"
     return 0
   fi
-  choice="$(prompt_choice "Service Control" \
-    ":status   Inspect systemd status" \
-    ":start    Start service" \
-    ":restart  Restart service" \
-    ":stop     Stop service" \
-    ":back     Return")" || return 0
+  choice="$(prompt_choice "服务控制" \
+    ":status   查看 systemd 状态" \
+    ":start    启动服务" \
+    ":restart  重启服务" \
+    ":stop     停止服务" \
+    ":back     返回")" || return 0
   case "${choice}" in
     0)
       output="$(systemctl status "${state_service_name}" --no-pager 2>&1 || true)"
-      append_log "Loaded systemd status for ${state_service_name}."
-      show_text_dialog "Service Status" "${output:-No status output returned.}"
+      append_log "已读取 ${state_service_name} 的 systemd 状态。"
+      show_text_dialog "服务状态" "${output:-没有返回状态输出。}"
       ;;
     1)
       if systemctl start "${state_service_name}" >/dev/null 2>&1; then
         refresh_state
-        append_log "Started ${state_service_name}."
-        show_message "Service Control" "Service started: ${state_service_name}"
+        append_log "已启动 ${state_service_name}。"
+        show_message "服务控制" "服务已启动：${state_service_name}"
       else
         output="$(systemctl start "${state_service_name}" 2>&1 || true)"
-        append_log "Failed to start ${state_service_name}."
-        show_text_dialog "Service Control" "${output:-Failed to start service.}"
+        append_log "启动 ${state_service_name} 失败。"
+        show_text_dialog "服务控制" "${output:-启动服务失败。}"
       fi
       ;;
     2)
       if systemctl restart "${state_service_name}" >/dev/null 2>&1; then
         refresh_state
-        append_log "Restarted ${state_service_name}."
-        show_message "Service Control" "Service restarted: ${state_service_name}"
+        append_log "已重启 ${state_service_name}。"
+        show_message "服务控制" "服务已重启：${state_service_name}"
       else
         output="$(systemctl restart "${state_service_name}" 2>&1 || true)"
-        append_log "Failed to restart ${state_service_name}."
-        show_text_dialog "Service Control" "${output:-Failed to restart service.}"
+        append_log "重启 ${state_service_name} 失败。"
+        show_text_dialog "服务控制" "${output:-重启服务失败。}"
       fi
       ;;
     3)
       if systemctl stop "${state_service_name}" >/dev/null 2>&1; then
         refresh_state
-        append_log "Stopped ${state_service_name}."
-        show_message "Service Control" "Service stopped: ${state_service_name}"
+        append_log "已停止 ${state_service_name}。"
+        show_message "服务控制" "服务已停止：${state_service_name}"
       else
         output="$(systemctl stop "${state_service_name}" 2>&1 || true)"
-        append_log "Failed to stop ${state_service_name}."
-        show_text_dialog "Service Control" "${output:-Failed to stop service.}"
+        append_log "停止 ${state_service_name} 失败。"
+        show_text_dialog "服务控制" "${output:-停止服务失败。}"
       fi
       ;;
   esac
@@ -759,21 +759,21 @@ service_menu() {
 
 maintenance_menu() {
   local choice
-  choice="$(prompt_choice "Maintenance" \
-    "update-core   Refresh xray-core using the stable backend" \
-    "uninstall     Remove deployed services and files" \
-    "back          Return")" || return 0
+  choice="$(prompt_choice "维护" \
+    "update-core   通过稳定版后端更新 xray-core" \
+    "uninstall     删除当前部署的服务和文件" \
+    "back          返回")" || return 0
   case "${choice}" in
     0)
-      if confirm_dialog "Update Core" "Run update-core on the current machine?"; then
-        append_log "Entering update-core flow."
-        suspend_for_local_console "Updating xray-core using the stable backend." bash "${CORE_SCRIPT}" update-core
+      if confirm_dialog "更新内核" "要在当前机器上执行 update-core 吗？"; then
+        append_log "进入 update-core 流程。"
+        suspend_for_local_console "正在通过稳定版后端更新 xray-core。" bash "${CORE_SCRIPT}" update-core
       fi
       ;;
     1)
-      if confirm_dialog "Uninstall" "Run uninstall on the current machine?"; then
-        append_log "Entering uninstall flow."
-        suspend_for_local_console "Entering uninstall flow using the stable backend." bash "${CORE_SCRIPT}" uninstall
+      if confirm_dialog "卸载" "要在当前机器上执行卸载吗？"; then
+        append_log "进入卸载流程。"
+        suspend_for_local_console "正在通过稳定版后端进入卸载流程。" bash "${CORE_SCRIPT}" uninstall
       fi
       ;;
   esac
@@ -784,19 +784,19 @@ execute_selected() {
   id="$(active_nav_id)"
   case "${id}" in
     overview)
-      show_text_dialog "Overview" "$(build_main_content overview)"
+      show_text_dialog "总览" "$(build_main_content overview)"
       ;;
     deploy)
-      if confirm_dialog "Install / Reinstall" "Launch the stable deployment installer now?"; then
-        append_log "Entering stable install flow."
-        suspend_for_local_console "Switching to the stable deployment installer." bash "${CORE_SCRIPT}" install
+      if confirm_dialog "安装 / 重装" "现在启动稳定版部署安装器吗？"; then
+        append_log "进入稳定版安装流程。"
+        suspend_for_local_console "正在切换到稳定版部署安装器。" bash "${CORE_SCRIPT}" install
       fi
       ;;
     dossier)
       output="$(run_core_capture show)"
-      last_dossier="${output:-No dossier output returned.}"
-      append_log "Deployment dossier captured from stable backend."
-      show_text_dialog "Deployment Dossier" "${last_dossier}"
+      last_dossier="${output:-没有返回部署档案内容。}"
+      append_log "已从稳定版后端获取部署档案。"
+      show_text_dialog "部署档案" "${last_dossier}"
       ;;
     service)
       service_menu
@@ -805,7 +805,7 @@ execute_selected() {
       maintenance_menu
       ;;
     briefing)
-      show_text_dialog "Help" "$(build_main_content briefing)"
+      show_text_dialog "帮助" "$(build_main_content briefing)"
       ;;
     quit)
       running=0
@@ -815,20 +815,20 @@ execute_selected() {
 
 usage() {
   cat <<EOF2
-Usage:
-  bash ${SCRIPT_NAME}              start the local terminal deployment console
+用法:
+  bash ${SCRIPT_NAME}              启动本地终端部署控制台
   bash ${SCRIPT_NAME} --help
 
-Notes:
-- this is a local bash+ANSI terminal GUI
-- no browser and no web service are used
-- the stable backend remains deploy_vless_xhttp.sh
-- if the stable backend is missing, this wrapper can fetch it from GitHub
+说明:
+- 这是一个本地 bash+ANSI 终端 GUI
+- 不会启动浏览器，也不会启动 Web 服务
+- 底层稳定版后端仍然是 deploy_vless_xhttp.sh
+- 如果缺少稳定版后端，这个控制台会自动从 GitHub 拉取
 EOF2
 }
 
 ensure_interactive_terminal() {
-  [[ -t 0 && -t 1 ]] || { printf '[x] interactive terminal required\n' >&2; exit 1; }
+  [[ -t 0 && -t 1 ]] || { printf '[x] 需要交互式终端环境\n' >&2; exit 1; }
 }
 
 init_ui() {
@@ -840,7 +840,7 @@ init_ui() {
 
 main_loop() {
   local key
-  append_log "Console online."
+  append_log "控制台已启动。"
   refresh_state
   while [[ "${running}" == "1" ]]; do
     draw_screen
