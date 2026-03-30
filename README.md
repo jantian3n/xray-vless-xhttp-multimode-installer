@@ -98,6 +98,8 @@ XRAY_CORE_SCRIPT=/path/to/deploy_vless_xhttp.sh python3 deploy_vless_xhttp_tno.p
 - 安装 / 重装已经内置为分步骤 GUI 向导
 - 部署、更新和卸载会在控制台里直接执行并显示输出
 - 控制台改成了常驻框架刷新，切换时不再每次整屏清空
+- 现在默认更推荐直接使用纯终端菜单
+- 如果需要，全屏 GUI 仍然可以通过 `gui` 子命令手动进入
 
 运行:
 

@@ -1644,6 +1644,20 @@ apply_proxy_mode() {
   restart_proxy_service
 }
 
+configure_and_apply() {
+  require_root
+  load_existing_meta_if_any
+  collect_inputs_for_selected_mode
+
+  if is_xray_mode; then
+    apply_xray_mode
+  else
+    apply_proxy_mode
+  fi
+
+  show_summary
+}
+
 configure_and_apply_noninteractive() {
   require_root
   NONINTERACTIVE=1
@@ -1658,6 +1672,25 @@ configure_and_apply_noninteractive() {
   fi
 
   show_summary
+}
+
+banner_text() {
+  cat <<'EOF'
+===========================================================
+ Xray 一键部署脚本
+ 支持模式:
+ 1. 单 VPS: VLESS + XHTTP + REALITY
+ 2. IPv6 上行 + IPv4 下行: 同一 VPS 后端
+ 3. VPS1 上行 + VPS2 下行: 当前机器部署 VPS2 后端
+ 4. VPS1 上行 + VPS2 下行: 当前机器部署 VPS1 上传代理
+ 5. CDN 上行 + VPS 下行: TLS + XHTTP
+
+ 说明:
+ - 当前默认是纯终端交互模式
+ - 单文件独立运行，不再调用旧版 shell
+ - 分离上下行模式会额外生成客户端补丁和 outbound JSON
+===========================================================
+EOF
 }
 
 active_service_name() {
@@ -1789,7 +1822,7 @@ capture_current_info() {
   fi
 
   if [[ ! -r "${META_FILE}" ]]; then
-    printf '当前账号没有权限读取 %s\n请使用 sudo 重新运行当前 GUI。\n' "${META_FILE}"
+    printf '当前账号没有权限读取 %s\n请使用 sudo 重新运行当前脚本。\n' "${META_FILE}"
     return 1
   fi
 
@@ -1805,6 +1838,36 @@ show_service_status() {
   local service_name
   service_name="$(active_service_name)"
   systemctl status "${service_name}" --no-pager || true
+}
+
+service_menu_text() {
+  require_root
+  [[ -f "${META_FILE}" ]] || die "未检测到历史部署信息: ${META_FILE}"
+  load_existing_meta_if_any
+
+  local service_name
+  service_name="$(active_service_name)"
+
+  while true; do
+    cat <<EOF
+
+服务管理:
+当前服务: ${service_name}
+1. 查看状态
+2. 启动服务
+3. 重启服务
+4. 停止服务
+0. 返回上一级
+EOF
+    case "$(prompt_default "请选择" "1")" in
+      1) show_service_status ;;
+      2) systemctl start "${service_name}" ;;
+      3) systemctl restart "${service_name}" ;;
+      4) systemctl stop "${service_name}" ;;
+      0) return 0 ;;
+      *) warn "请输入 0-4。" ;;
+    esac
+  done
 }
 
 update_core_only() {
@@ -1855,6 +1918,44 @@ uninstall_all() {
 uninstall_all_no_prompt() {
   require_root
   perform_uninstall
+}
+
+main_menu() {
+  while true; do
+    banner_text
+    cat <<'EOF'
+1. 安装 / 重装
+2. 查看当前配置和客户端信息
+3. 服务管理
+4. 更新 Xray 内核
+5. 卸载
+6. 启动全屏 GUI（可选）
+0. 退出
+EOF
+
+    case "$(prompt_default "请选择" "1")" in
+      1) configure_and_apply ;;
+      2) show_current_info ;;
+      3) service_menu_text ;;
+      4) update_core_only ;;
+      5) uninstall_all ;;
+      6)
+        running=1
+        selected_index=1
+        init_ui
+        main_loop
+        restore_terminal
+        ui_ready=0
+        screen_needs_clear=1
+        ;;
+      0) exit 0 ;;
+      *) warn "请输入 0-6。" ;;
+    esac
+
+    echo
+    read -r -p "按回车继续..." _
+    clear || true
+  done
 }
 
 reset_state() {
@@ -2991,7 +3092,7 @@ show_file_dialog() {
   fi
 
   if [[ ! -r "${path}" ]]; then
-    show_text_dialog "${title}" "$(printf '当前账号没有权限读取：%s\n请使用 sudo 重新运行当前 GUI。' "${path}")"
+    show_text_dialog "${title}" "$(printf '当前账号没有权限读取：%s\n请使用 sudo 重新运行当前脚本。' "${path}")"
     return 0
   fi
 
@@ -3170,7 +3271,10 @@ execute_selected() {
 usage() {
   cat <<EOF2
 用法:
-  bash ${SCRIPT_NAME}              启动本地终端部署控制台
+  bash ${SCRIPT_NAME}              启动纯终端菜单
+  bash ${SCRIPT_NAME} gui          启动全屏 GUI（可选）
+  bash ${SCRIPT_NAME} install      直接进入安装 / 重装
+  bash ${SCRIPT_NAME} service      进入服务管理
   bash ${SCRIPT_NAME} show         输出当前部署摘要
   bash ${SCRIPT_NAME} update-core  更新 xray-core
   bash ${SCRIPT_NAME} uninstall    卸载当前部署
@@ -3178,10 +3282,9 @@ usage() {
   bash ${SCRIPT_NAME} --help
 
 说明:
-- 这是一个本地 bash+ANSI 终端 GUI
-- 不会启动浏览器，也不会启动 Web 服务
-- 安装流程已经内置为 GUI 向导
-- 当前 GUI 已经是独立单文件，不再调用旧版 shell
+- 当前默认是纯终端菜单，更稳更适合 SSH
+- 仍然是单文件独立脚本，不会调用旧版 shell
+- 如需全屏界面，可以显式使用 gui
 EOF2
 }
 
@@ -3226,10 +3329,19 @@ main_loop() {
 }
 
 dispatch_cli() {
-  case "${1:-gui}" in
-    gui|menu)
+  case "${1:-menu}" in
+    menu)
+      main_menu
+      ;;
+    gui)
       init_ui
       main_loop
+      ;;
+    install)
+      configure_and_apply
+      ;;
+    service)
+      service_menu_text
       ;;
     show)
       show_current_info
