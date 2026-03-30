@@ -1,13 +1,11 @@
 # Xray VLESS XHTTP Multimode Deploy
 
-一个面向 Debian/Ubuntu VPS 的一键部署脚本，基于 `xray-core` 当前源码能力整理，支持多种 `VLESS + XHTTP` 场景。
+一个面向 Debian/Ubuntu VPS 的传统终端一键部署脚本，支持多种 `VLESS + XHTTP` 场景。
 
 脚本文件:
 
-- `deploy_vless_xhttp.sh`
-- `deploy_vless_xhttp_beta.sh`
-- `deploy_vless_xhttp_tno.py`
-- `deploy_vless_xhttp_console.sh`
+- `deploy_vless_xhttp.sh`: 主脚本，纯文本菜单交互
+- `deploy_vless_xhttp_console.sh`: 兼容入口，内部转发到主脚本
 
 支持模式:
 
@@ -19,12 +17,12 @@
 
 特点:
 
-- 交互式菜单
+- 传统终端菜单
 - 自定义端口
 - 自定义 `SNI`
 - 自定义 `XHTTP path`
 - 自动生成基础 `vless://` 分享链接
-- 对分离上下行模式额外生成:
+- 分离上下行模式额外生成:
   - `client_split_patch.json`
   - `client_outbound.json`
   - `client_readme.txt`
@@ -32,88 +30,30 @@
 使用:
 
 ```bash
-wget -O deploy_vless_xhttp.sh https://raw.githubusercontent.com/jantian3n/xray-vless-xhttp-multimode-installer/main/deploy_vless_xhttp.sh && chmod +x deploy_vless_xhttp.sh && sudo bash deploy_vless_xhttp.sh
+wget -O deploy_vless_xhttp.sh https://raw.githubusercontent.com/jantian3n/xray-vless-xhttp-multimode-installer/main/deploy_vless_xhttp.sh
+chmod +x deploy_vless_xhttp.sh
+sudo bash deploy_vless_xhttp.sh
 ```
 
-或:
+也可以直接进入安装向导:
 
 ```bash
 sudo bash deploy_vless_xhttp.sh install
 ```
 
-Beta 版:
-
-- `deploy_vless_xhttp_beta.sh` 复用稳定版底层部署逻辑，主要优化交互层
-- 在终端里优先使用 `whiptail` 提供类 GUI / TUI 菜单
-- Beta 默认使用偏 `vim` 风格配色
-- 菜单额外加入了类似 `vim` 的状态栏、边框感和按键提示
-- 如果目标机器没有安装 `whiptail`，会自动回退到经典文本菜单
-- 如果你只下载了 `deploy_vless_xhttp_beta.sh`，它会自动拉取稳定版核心脚本后再启动
-
-Beta 示例:
+常用子命令:
 
 ```bash
-wget -O deploy_vless_xhttp_beta.sh https://raw.githubusercontent.com/jantian3n/xray-vless-xhttp-multimode-installer/main/deploy_vless_xhttp_beta.sh && chmod +x deploy_vless_xhttp_beta.sh && sudo bash deploy_vless_xhttp_beta.sh
-```
-
-如果你想强制启用终端 GUI，建议先安装:
-
-```bash
-sudo apt-get update -y && sudo apt-get install -y whiptail
-```
-
-如果你想切回系统默认配色:
-
-```bash
-XRAY_UI_THEME=default bash deploy_vless_xhttp_beta.sh
-```
-
-TNO 本地终端版:
-
-- `deploy_vless_xhttp_tno.py` 是一个独立的 `curses` 本地 GUI
-- 不启动网页服务，也不依赖浏览器
-- 风格上更偏“战略终端 / 指挥界面”，适合纯 SSH / 终端场景
-- 底层仍复用稳定版 `deploy_vless_xhttp.sh`
-
-运行:
-
-```bash
-python3 deploy_vless_xhttp_tno.py
-```
-
-如果稳定版脚本不在同目录，也可以指定:
-
-```bash
-XRAY_CORE_SCRIPT=/path/to/deploy_vless_xhttp.sh python3 deploy_vless_xhttp_tno.py
-```
-
-纯 Bash 终端控制台:
-
-- `deploy_vless_xhttp_console.sh` 是一个独立的本地全屏终端控制台
-- 基于 `bash + ANSI + read`
-- 不启动网页，也不依赖浏览器
-- 现在已经重构为单文件 GUI 版，不再调用旧版 `deploy_vless_xhttp.sh`
-- 界面主题聚焦 `Xray` 部署、服务控制和本机维护
-- 主菜单下拆分为部署、档案 / 客户端、服务、维护等子菜单
-- 安装 / 重装已经内置为分步骤 GUI 向导
-- 部署、更新和卸载会在控制台里直接执行并显示输出
-- 控制台改成了常驻框架刷新，切换时不再每次整屏清空
-- 现在默认更推荐直接使用纯终端菜单
-- 如果需要，全屏 GUI 仍然可以通过 `gui` 子命令手动进入
-
-运行:
-
-```bash
-sudo bash deploy_vless_xhttp_console.sh
+sudo bash deploy_vless_xhttp.sh show
+sudo bash deploy_vless_xhttp.sh service
+sudo bash deploy_vless_xhttp.sh update-core
+sudo bash deploy_vless_xhttp.sh uninstall
 ```
 
 说明:
 
-- 建议终端至少 `100x28`
-- 也支持 `show` / `update-core` / `uninstall` / `apply-env` 这些子命令
-
-注意:
-
+- 现在仓库只保留传统终端交互，不再提供 GUI / TUI / `XRAY_GUI_*` 环境变量入口。
+- 如果旧用法里调用了 `deploy_vless_xhttp_console.sh`，它会自动转发到 `deploy_vless_xhttp.sh`。
 - 普通单机模式可以直接导入 `vless://` 链接。
 - 分离上下行模式通常不能只靠纯 `vless://` 链接使用，客户端需要支持高级 JSON / 自定义 outbound。
 - 双 VPS 模式请先部署 `VPS2` 后端，再部署 `VPS1` 上传代理。

@@ -51,7 +51,6 @@ SPIDERX=""
 XHTTP_PATH=""
 XHTTP_MODE=""
 NODE_NAME=""
-NONINTERACTIVE="${NONINTERACTIVE:-0}"
 
 log() {
   printf '[*] %s\n' "$*"
@@ -76,10 +75,6 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
-is_noninteractive() {
-  [[ "${NONINTERACTIVE:-0}" == "1" ]]
-}
-
 banner() {
   cat <<'EOF'
 ===========================================================
@@ -102,12 +97,11 @@ usage() {
   cat <<EOF
 用法:
   bash ${SCRIPT_NAME}              进入交互菜单
-  bash ${SCRIPT_NAME} install      安装或重装
+  bash ${SCRIPT_NAME} install      直接进入安装 / 重装向导
   bash ${SCRIPT_NAME} show         查看当前配置和客户端信息
   bash ${SCRIPT_NAME} service      服务管理
   bash ${SCRIPT_NAME} update-core  更新 Xray 内核
   bash ${SCRIPT_NAME} uninstall    卸载脚本部署的组件
-  bash ${SCRIPT_NAME} apply-env    以环境变量方式执行非交互安装（供本地 GUI 调用）
 EOF
 }
 
@@ -165,11 +159,6 @@ prompt_default() {
   local default="${2-}"
   local reply
 
-  if is_noninteractive; then
-    printf '%s' "${default}"
-    return 0
-  fi
-
   if [[ -n "${default}" ]]; then
     read -r -p "${prompt} [${default}]: " reply
     printf '%s' "${reply:-${default}}"
@@ -188,13 +177,6 @@ prompt_yes_no() {
     suffix="Y/n"
   else
     suffix="y/N"
-  fi
-
-  if is_noninteractive; then
-    if [[ "${default}" == "y" ]]; then
-      return 0
-    fi
-    return 1
   fi
 
   read -r -p "${prompt} [${suffix}]: " reply
@@ -369,9 +351,6 @@ EOF
       4) printf 'split_dualvps_reality_proxy'; return 0 ;;
       5) printf 'split_cdn_tls_backend'; return 0 ;;
       *)
-        if is_noninteractive; then
-          die "非交互安装时 DEPLOY_MODE 无效，请传入 single_reality / split_dualstack_reality / split_dualvps_reality_backend / split_dualvps_reality_proxy / split_cdn_tls_backend。"
-        fi
         warn "请输入 1-5。"
         ;;
     esac
@@ -415,15 +394,9 @@ EOF
           printf 'stream-one'
           return 0
         fi
-        if is_noninteractive; then
-          die "当前部署模式不支持非交互选择 stream-one。"
-        fi
         warn "当前模式不建议使用 stream-one。"
         ;;
       *)
-        if is_noninteractive; then
-          die "非交互安装时 XHTTP_MODE 无效，请传入 auto / packet-up / stream-up / stream-one。"
-        fi
         warn "请输入有效序号。"
         ;;
     esac
@@ -441,9 +414,6 @@ prompt_required() {
       printf '%s' "${reply}"
       return 0
     fi
-    if is_noninteractive; then
-      die "非交互安装缺少必填项：${prompt}"
-    fi
     warn "该项不能为空。"
   done
 }
@@ -457,9 +427,6 @@ prompt_port() {
     if validate_port "${reply}"; then
       printf '%s' "${reply}"
       return 0
-    fi
-    if is_noninteractive; then
-      die "非交互安装端口无效：${reply:-<empty>}"
     fi
     warn "端口必须是 1-65535 的整数。"
   done
@@ -475,9 +442,6 @@ prompt_path() {
     if [[ -n "${reply}" ]]; then
       printf '%s' "${reply}"
       return 0
-    fi
-    if is_noninteractive; then
-      die "非交互安装的 XHTTP path 无效。"
     fi
     warn "path 不能为空。"
   done
@@ -495,9 +459,6 @@ prompt_dest() {
       printf '%s' "${reply}"
       return 0
     fi
-    if is_noninteractive; then
-      die "非交互安装的 dest 无效：${prompt}"
-    fi
     warn "dest 不能为空。"
   done
 }
@@ -513,53 +474,8 @@ prompt_existing_file() {
       printf '%s' "${reply}"
       return 0
     fi
-    if is_noninteractive; then
-      die "非交互安装要求文件存在，但未找到：${reply:-<empty>}"
-    fi
     warn "文件不存在: ${reply}"
   done
-}
-
-load_noninteractive_env_inputs() {
-  if [[ -n "${XRAY_GUI_DEPLOY_MODE:-}" ]]; then
-    case "${XRAY_GUI_DEPLOY_MODE}" in
-      single_reality|split_dualstack_reality|split_dualvps_reality_backend|split_dualvps_reality_proxy|split_cdn_tls_backend)
-        DEPLOY_MODE="${XRAY_GUI_DEPLOY_MODE}"
-        ;;
-      *)
-        die "XRAY_GUI_DEPLOY_MODE 无效：${XRAY_GUI_DEPLOY_MODE}"
-        ;;
-    esac
-  fi
-  [[ -n "${XRAY_GUI_PORT:-}" ]] && PORT="${XRAY_GUI_PORT}"
-  [[ -n "${XRAY_GUI_UPLOAD_ADDRESS:-}" ]] && UPLOAD_ADDRESS="${XRAY_GUI_UPLOAD_ADDRESS}"
-  [[ -n "${XRAY_GUI_DOWNLOAD_ADDRESS:-}" ]] && DOWNLOAD_ADDRESS="${XRAY_GUI_DOWNLOAD_ADDRESS}"
-  [[ -n "${XRAY_GUI_BACKEND_ADDRESS:-}" ]] && BACKEND_ADDRESS="${XRAY_GUI_BACKEND_ADDRESS}"
-  [[ -n "${XRAY_GUI_BACKEND_PORT:-}" ]] && BACKEND_PORT="${XRAY_GUI_BACKEND_PORT}"
-  [[ -n "${XRAY_GUI_SNI:-}" ]] && SNI="${XRAY_GUI_SNI}"
-  [[ -n "${XRAY_GUI_UPLOAD_SNI:-}" ]] && UPLOAD_SNI="${XRAY_GUI_UPLOAD_SNI}"
-  [[ -n "${XRAY_GUI_DOWNLOAD_SNI:-}" ]] && DOWNLOAD_SNI="${XRAY_GUI_DOWNLOAD_SNI}"
-  [[ -n "${XRAY_GUI_REALITY_DEST:-}" ]] && REALITY_DEST="${XRAY_GUI_REALITY_DEST}"
-  [[ -n "${XRAY_GUI_TLS_CERT_FILE:-}" ]] && TLS_CERT_FILE="${XRAY_GUI_TLS_CERT_FILE}"
-  [[ -n "${XRAY_GUI_TLS_KEY_FILE:-}" ]] && TLS_KEY_FILE="${XRAY_GUI_TLS_KEY_FILE}"
-  [[ -n "${XRAY_GUI_FINGERPRINT:-}" ]] && FINGERPRINT="${XRAY_GUI_FINGERPRINT}"
-  [[ -n "${XRAY_GUI_SPIDERX:-}" ]] && SPIDERX="${XRAY_GUI_SPIDERX}"
-  [[ -n "${XRAY_GUI_XHTTP_PATH:-}" ]] && XHTTP_PATH="${XRAY_GUI_XHTTP_PATH}"
-  if [[ -n "${XRAY_GUI_XHTTP_MODE:-}" ]]; then
-    case "${XRAY_GUI_XHTTP_MODE}" in
-      auto|packet-up|stream-up|stream-one)
-        XHTTP_MODE="${XRAY_GUI_XHTTP_MODE}"
-        ;;
-      *)
-        die "XRAY_GUI_XHTTP_MODE 无效：${XRAY_GUI_XHTTP_MODE}"
-        ;;
-    esac
-  fi
-  [[ -n "${XRAY_GUI_NODE_NAME:-}" ]] && NODE_NAME="${XRAY_GUI_NODE_NAME}"
-  [[ -n "${XRAY_GUI_UUID:-}" ]] && UUID="${XRAY_GUI_UUID}"
-  [[ -n "${XRAY_GUI_REALITY_PRIVATE_KEY:-}" ]] && REALITY_PRIVATE_KEY="${XRAY_GUI_REALITY_PRIVATE_KEY}"
-  [[ -n "${XRAY_GUI_REALITY_PUBLIC_KEY:-}" ]] && REALITY_PUBLIC_KEY="${XRAY_GUI_REALITY_PUBLIC_KEY}"
-  [[ -n "${XRAY_GUI_SHORT_ID:-}" ]] && SHORT_ID="${XRAY_GUI_SHORT_ID}"
 }
 
 port_maybe_busy_warning() {
@@ -1506,22 +1422,6 @@ configure_and_apply() {
   show_summary
 }
 
-configure_and_apply_noninteractive() {
-  require_root
-  NONINTERACTIVE=1
-  load_existing_meta_if_any
-  load_noninteractive_env_inputs
-  collect_inputs_for_selected_mode
-
-  if is_xray_mode; then
-    apply_xray_mode
-  else
-    apply_proxy_mode
-  fi
-
-  show_summary
-}
-
 active_service_name() {
   if [[ -n "${ACTIVE_SERVICE:-}" ]]; then
     printf '%s' "${ACTIVE_SERVICE}"
@@ -1774,9 +1674,6 @@ dispatch_cli() {
       ;;
     uninstall)
       uninstall_all
-      ;;
-    apply-env)
-      configure_and_apply_noninteractive
       ;;
     -h|--help|help)
       usage
