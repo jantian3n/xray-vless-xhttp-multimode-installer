@@ -58,7 +58,7 @@ NAV_LABELS=(
   "退出"
 )
 
-selected_index=0
+selected_index=1
 running=1
 ui_ready=0
 term_cols=0
@@ -2176,7 +2176,7 @@ draw_logs() {
 
 draw_footer() {
   local footer_row=$((term_lines - 1))
-  local footer_text=" j/k 或方向键移动 | Enter 执行 | r 刷新 | q 退出 / 关闭弹窗 | 纯本地 shell GUI "
+  local footer_text=" j/k 或方向键移动 | Enter / Space 执行 | r 刷新 | q 退出 / 关闭弹窗 | 纯本地 shell GUI "
   erase_row "${footer_row}"
   print_at "${footer_row}" 0 " $(repeat_char ' ' $((term_cols - 1)))" "$(color_focus)"
   print_at "${footer_row}" 1 "${footer_text}" "$(color_focus)"
@@ -2222,11 +2222,11 @@ draw_screen() {
 
 read_key() {
   local key
-  IFS= read -rsn1 key || return 1
+  IFS= read -rsn1 key </dev/tty || return 1
   if [[ "${key}" == $'\x1b' ]]; then
-    IFS= read -rsn1 -t 0.01 key || { printf 'esc'; return 0; }
+    IFS= read -rsn1 -t 0.01 key </dev/tty || { printf 'esc'; return 0; }
     if [[ "${key}" == '[' ]]; then
-      IFS= read -rsn1 -t 0.01 key || { printf 'esc'; return 0; }
+      IFS= read -rsn1 -t 0.01 key </dev/tty || { printf 'esc'; return 0; }
       case "${key}" in
         A) printf 'up' ;;
         B) printf 'down' ;;
@@ -2241,6 +2241,7 @@ read_key() {
   fi
   case "${key}" in
     ''|$'\n'|$'\r') printf 'enter' ;;
+    ' ') printf 'enter' ;;
     j|J) printf 'down' ;;
     k|K) printf 'up' ;;
     h|H) printf 'left' ;;
