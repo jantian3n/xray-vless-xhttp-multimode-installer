@@ -142,8 +142,8 @@ color_warn() { printf '\033[1;31m'; }
 color_dim() { printf '\033[37m'; }
 color_success() { printf '\033[1;32m'; }
 
-show_cursor() { printf '\033[?25h'; }
-hide_cursor() { printf '\033[?25l'; }
+show_cursor() { printf '\033[?25h' >/dev/tty; }
+hide_cursor() { printf '\033[?25l' >/dev/tty; }
 
 get_terminal_size() {
   local size
@@ -169,7 +169,7 @@ repeat_char() {
 }
 
 move_to() {
-  printf '\033[%s;%sH' "$(( $1 + 1 ))" "$(( $2 + 1 ))"
+  printf '\033[%s;%sH' "$(( $1 + 1 ))" "$(( $2 + 1 ))" >/dev/tty
 }
 
 print_at() {
@@ -179,16 +179,16 @@ print_at() {
   local style="${4:-}"
   move_to "${row}" "${col}"
   if [[ -n "${style}" ]]; then
-    printf '%s%s%s' "${style}" "${text}" "$(color_reset)"
+    printf '%s%s%s' "${style}" "${text}" "$(color_reset)" >/dev/tty
   else
-    printf '%s' "${text}"
+    printf '%s' "${text}" >/dev/tty
   fi
 }
 
 erase_row() {
   local row="$1"
   move_to "${row}" 0
-  printf '%s' "$(repeat_char ' ' "${term_cols}")"
+  printf '%s' "$(repeat_char ' ' "${term_cols}")" >/dev/tty
 }
 
 clear_region() {
@@ -201,7 +201,7 @@ clear_region() {
   blank="$(repeat_char ' ' "${width}")"
   for ((row = top; row < top + height; row++)); do
     move_to "${row}" "${left}"
-    printf '%s' "${blank}"
+    printf '%s' "${blank}" >/dev/tty
   done
 }
 
@@ -2192,7 +2192,7 @@ draw_screen() {
 
   if (( term_cols < 100 || term_lines < 28 )); then
     if (( screen_needs_clear == 1 || screen_small == 0 )); then
-      printf '\033[2J\033[H'
+      printf '\033[2J\033[H' >/dev/tty
       screen_needs_clear=0
     fi
     screen_small=1
@@ -2209,7 +2209,7 @@ draw_screen() {
   fi
 
   if (( screen_needs_clear == 1 )); then
-    printf '\033[2J\033[H'
+    printf '\033[2J\033[H' >/dev/tty
     screen_needs_clear=0
   fi
 
@@ -3191,7 +3191,7 @@ ensure_interactive_terminal() {
 
 init_ui() {
   ensure_interactive_terminal
-  printf '\033[?1049h\033[?25l'
+  printf '\033[?1049h\033[?25l' >/dev/tty
   ui_ready=1
   screen_needs_clear=1
 }
