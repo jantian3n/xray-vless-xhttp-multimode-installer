@@ -31,6 +31,7 @@ ACTIVE_SERVICE=""
 SECURITY_MODE=""
 
 PORT=""
+DOWNLOAD_PORT=""
 UPLOAD_ADDRESS=""
 DOWNLOAD_ADDRESS=""
 BACKEND_ADDRESS=""
@@ -40,6 +41,7 @@ UUID=""
 SNI=""
 UPLOAD_SNI=""
 DOWNLOAD_SNI=""
+UPLOAD_HOST=""
 REALITY_DEST=""
 REALITY_PRIVATE_KEY=""
 REALITY_PUBLIC_KEY=""
@@ -83,7 +85,8 @@ banner() {
  1. 单 VPS: VLESS + XHTTP + REALITY
  2. IPv6 上行 + IPv4 下行: 同一 VPS 后端
  3. VPS1 上行 + VPS2 下行: VPS1 透传 / VPS2 后端
- 4. CDN 上行 + VPS 下行: TLS + XHTTP
+ 4. VPS1 上行 + VPS2 下行: 当前机器部署 VPS1 上传代理
+ 5. CDN 上行(TLS) + VPS 下行(REALITY): 当前机器部署双入口后端
 
  说明:
  - 基础 vless:// 链接会生成
@@ -287,12 +290,39 @@ is_split_mode() {
   esac
 }
 
+is_cdn_reality_mode() {
+  [[ "${DEPLOY_MODE:-}" == "split_cdn_tls_backend" ]]
+}
+
 is_reality_mode() {
   [[ "${SECURITY_MODE:-}" == "reality" ]]
 }
 
 is_tls_mode() {
   [[ "${SECURITY_MODE:-}" == "tls" ]]
+}
+
+download_uses_reality() {
+  if is_cdn_reality_mode; then
+    return 0
+  fi
+  is_reality_mode
+}
+
+current_download_port() {
+  printf '%s' "${DOWNLOAD_PORT:-${PORT}}"
+}
+
+current_upload_host() {
+  printf '%s' "${UPLOAD_HOST:-${UPLOAD_SNI:-${UPLOAD_ADDRESS}}}"
+}
+
+security_label() {
+  if is_cdn_reality_mode; then
+    printf 'upload=tls+cdn, download=reality'
+  else
+    printf '%s' "${SECURITY_MODE}"
+  fi
 }
 
 mode_label() {
@@ -424,6 +454,21 @@ prompt_port() {
 
   while true; do
     reply="$(prompt_default "监听端口" "${default}")"
+    if validate_port "${reply}"; then
+      printf '%s' "${reply}"
+      return 0
+    fi
+    warn "端口必须是 1-65535 的整数。"
+  done
+}
+
+prompt_named_port() {
+  local prompt="${1}"
+  local default="${2:-443}"
+  local reply
+
+  while true; do
+    reply="$(prompt_default "${prompt}" "${default}")"
     if validate_port "${reply}"; then
       printf '%s' "${reply}"
       return 0
@@ -657,6 +702,7 @@ save_meta() {
     printf 'ACTIVE_SERVICE=%q\n' "${ACTIVE_SERVICE-}"
     printf 'SECURITY_MODE=%q\n' "${SECURITY_MODE-}"
     printf 'PORT=%q\n' "${PORT-}"
+    printf 'DOWNLOAD_PORT=%q\n' "${DOWNLOAD_PORT-}"
     printf 'UPLOAD_ADDRESS=%q\n' "${UPLOAD_ADDRESS-}"
     printf 'DOWNLOAD_ADDRESS=%q\n' "${DOWNLOAD_ADDRESS-}"
     printf 'BACKEND_ADDRESS=%q\n' "${BACKEND_ADDRESS-}"
@@ -665,6 +711,7 @@ save_meta() {
     printf 'SNI=%q\n' "${SNI-}"
     printf 'UPLOAD_SNI=%q\n' "${UPLOAD_SNI-}"
     printf 'DOWNLOAD_SNI=%q\n' "${DOWNLOAD_SNI-}"
+    printf 'UPLOAD_HOST=%q\n' "${UPLOAD_HOST-}"
     printf 'REALITY_DEST=%q\n' "${REALITY_DEST-}"
     printf 'REALITY_PRIVATE_KEY=%q\n' "${REALITY_PRIVATE_KEY-}"
     printf 'REALITY_PUBLIC_KEY=%q\n' "${REALITY_PUBLIC_KEY-}"
@@ -684,6 +731,7 @@ save_meta() {
 reset_mode_specific_values() {
   BACKEND_ADDRESS=""
   BACKEND_PORT=""
+  DOWNLOAD_PORT=""
   TLS_CERT_FILE=""
   TLS_KEY_FILE=""
   REALITY_DEST=""
@@ -693,6 +741,7 @@ reset_mode_specific_values() {
   SNI=""
   UPLOAD_SNI=""
   DOWNLOAD_SNI=""
+  UPLOAD_HOST=""
   SPIDERX=""
 }
 
@@ -1684,6 +1733,1042 @@ dispatch_cli() {
       exit 1
       ;;
   esac
+}
+
+banner() {
+  cat <<'EOF'
+===========================================================
+ Xray 一键部署脚本
+ 支持模式:
+ 1. 单 VPS: VLESS + XHTTP + REALITY
+ 2. IPv6 上行 + IPv4 下行: 同一 VPS 后端
+ 3. VPS1 上行 + VPS2 下行: 当前机器部署 VPS2 后端
+ 4. VPS1 上行 + VPS2 下行: 当前机器部署 VPS1 上传代理
+ 5. CDN 上行(TLS) + VPS 下行(REALITY): 当前机器部署双入口后端
+
+ 说明:
+ - 基础 vless:// 链接会生成
+ - 分离上下行模式还会额外生成客户端补丁和 outbound JSON
+ - 第 5 项默认使用双端口；若要共用 443，请自行在前面加 nginx/caddy 分流
+===========================================================
+EOF
+}
+
+mode_label() {
+  case "${DEPLOY_MODE}" in
+    single_reality)
+      printf '单 VPS: VLESS + XHTTP + REALITY'
+      ;;
+    split_dualstack_reality)
+      printf '同机分离: IPv6 上行 + IPv4 下行'
+      ;;
+    split_dualvps_reality_backend)
+      printf '双 VPS: VPS2 后端 / 下行服务端'
+      ;;
+    split_dualvps_reality_proxy)
+      printf '双 VPS: VPS1 上传代理'
+      ;;
+    split_cdn_tls_backend)
+      printf 'CDN 上行(TLS) + VPS 下行(REALITY)'
+      ;;
+    *)
+      printf '未配置'
+      ;;
+  esac
+}
+
+choose_deploy_mode() {
+  local current="${1:-single_reality}"
+  local choice
+
+  cat >&2 <<'EOF'
+请选择部署模式:
+1. 单 VPS：VLESS + XHTTP + REALITY
+2. IPv6 上行 + IPv4 下行：同一 VPS 后端
+3. VPS1 上行 + VPS2 下行：当前机器部署 VPS2 后端
+4. VPS1 上行 + VPS2 下行：当前机器部署 VPS1 上传代理
+5. CDN 上行(TLS) + VPS 下行(REALITY)：当前机器部署双入口后端
+EOF
+
+  while true; do
+    choice="$(prompt_default "输入序号" "$(default_mode_number "${current}")")"
+    case "${choice}" in
+      1) printf 'single_reality'; return 0 ;;
+      2) printf 'split_dualstack_reality'; return 0 ;;
+      3) printf 'split_dualvps_reality_backend'; return 0 ;;
+      4) printf 'split_dualvps_reality_proxy'; return 0 ;;
+      5) printf 'split_cdn_tls_backend'; return 0 ;;
+      *)
+        warn "请输入 1-5。"
+        ;;
+    esac
+  done
+}
+
+collect_split_cdn_tls_backend_inputs() {
+  local auto_v4 default_download_sni
+
+  DEPLOY_MODE="split_cdn_tls_backend"
+  SERVICE_KIND="xray"
+  ACTIVE_SERVICE="xray"
+  SECURITY_MODE="mixed"
+
+  auto_v4="$(detect_public_ipv4)"
+
+  warn "本项会部署两个 Xray 入口：上传侧走 TLS/CDN，下行侧走 REALITY。当前脚本不内置 nginx/caddy 分流，因此两个入口不能共用同一监听端口。"
+
+  UPLOAD_ADDRESS="$(prompt_required "上行地址（CDN 域名或 IP）" "${UPLOAD_ADDRESS:-}")"
+  DOWNLOAD_ADDRESS="$(prompt_required "下行地址（直连域名或 IP，建议域名）" "${DOWNLOAD_ADDRESS:-${auto_v4}}")"
+  PORT="$(prompt_named_port "上传监听端口（TLS/CDN）" "${PORT:-443}")"
+  port_maybe_busy_warning "${PORT}"
+
+  while true; do
+    DOWNLOAD_PORT="$(prompt_named_port "下行监听端口（REALITY）" "${DOWNLOAD_PORT:-8443}")"
+    if [[ "${DOWNLOAD_PORT}" != "${PORT}" ]]; then
+      break
+    fi
+    warn "上传端口和下行 REALITY 端口不能相同；若要共用 443，需要你自行在前面加 nginx/caddy 做分流。"
+  done
+  port_maybe_busy_warning "${DOWNLOAD_PORT}"
+
+  UPLOAD_SNI="$(prompt_required "上行侧 TLS SNI" "${UPLOAD_SNI:-${UPLOAD_ADDRESS}}")"
+  UPLOAD_HOST="$(prompt_required "上行侧 Host（过 CDN 必填）" "${UPLOAD_HOST:-${UPLOAD_SNI}}")"
+
+  default_download_sni="${DOWNLOAD_SNI:-}"
+  if [[ -z "${default_download_sni}" ]]; then
+    if [[ "${DOWNLOAD_ADDRESS}" =~ [A-Za-z] ]]; then
+      default_download_sni="${DOWNLOAD_ADDRESS}"
+    else
+      default_download_sni="download-installer.cdn.mozilla.net"
+    fi
+  fi
+
+  while true; do
+    DOWNLOAD_SNI="$(prompt_required "下行侧 REALITY SNI / serverName" "${default_download_sni}")"
+    if [[ "${DOWNLOAD_SNI}" != "${UPLOAD_SNI}" ]]; then
+      break
+    fi
+    warn "该模式要求上下行使用不同的 SNI，请重新输入下行 REALITY SNI。"
+    default_download_sni=""
+  done
+
+  REALITY_DEST="$(prompt_dest "下行侧 REALITY dest（默认跟下行 SNI 走 443）" "${REALITY_DEST:-${DOWNLOAD_SNI}:443}")"
+  XHTTP_PATH="$(prompt_path "${XHTTP_PATH:-/$(openssl rand -hex 6)}")"
+  XHTTP_MODE="$(choose_xhttp_mode "${XHTTP_MODE:-auto}" "no")"
+  FINGERPRINT="$(prompt_required "客户端 fingerprint" "${FINGERPRINT:-chrome}")"
+  SPIDERX="$(normalize_spiderx "$(prompt_default "下行侧 SpiderX" "${SPIDERX:-/}")")"
+  TLS_CERT_FILE="$(prompt_existing_file "上传侧证书文件 certificateFile" "${TLS_CERT_FILE:-/etc/ssl/xray/fullchain.pem}")"
+  TLS_KEY_FILE="$(prompt_existing_file "上传侧私钥文件 keyFile" "${TLS_KEY_FILE:-/etc/ssl/xray/private.key}")"
+  NODE_NAME="$(prompt_required "节点备注名" "${NODE_NAME:-VLESS-XHTTP-CDNUP-REALITYDOWN}")"
+
+  SNI=""
+  BACKEND_ADDRESS=""
+  BACKEND_PORT=""
+
+  maybe_refresh_uuid
+  ensure_xray_installed
+  maybe_refresh_reality_material
+}
+
+write_xray_config() {
+  local security_block
+
+  install -d -m 755 "${CONFIG_DIR}"
+
+  if is_cdn_reality_mode; then
+    cat > "${CONFIG_FILE}" <<EOF
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "tag": "vless-xhttp-upload-tls-in",
+      "port": ${PORT},
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "$(json_escape "${UUID}")"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "xhttp",
+        "security": "tls",
+        "tlsSettings": {
+          "serverName": "$(json_escape "${UPLOAD_SNI}")",
+          "minVersion": "1.2",
+          "alpn": [
+            "h2",
+            "http/1.1"
+          ],
+          "certificates": [
+            {
+              "certificateFile": "$(json_escape "${TLS_CERT_FILE}")",
+              "keyFile": "$(json_escape "${TLS_KEY_FILE}")"
+            }
+          ]
+        },
+        "xhttpSettings": {
+          "path": "$(json_escape "${XHTTP_PATH}")",
+          "mode": "$(json_escape "${XHTTP_MODE}")"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls",
+          "quic"
+        ]
+      }
+    },
+    {
+      "tag": "vless-xhttp-download-reality-in",
+      "port": $(current_download_port),
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "$(json_escape "${UUID}")"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "xhttp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "$(json_escape "${REALITY_DEST}")",
+          "xver": 0,
+          "serverNames": [
+            "$(json_escape "${DOWNLOAD_SNI}")"
+          ],
+          "privateKey": "$(json_escape "${REALITY_PRIVATE_KEY}")",
+          "shortIds": [
+            "$(json_escape "${SHORT_ID}")"
+          ]
+        },
+        "xhttpSettings": {
+          "path": "$(json_escape "${XHTTP_PATH}")",
+          "mode": "$(json_escape "${XHTTP_MODE}")"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls",
+          "quic"
+        ]
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "direct",
+      "protocol": "freedom"
+    }
+  ]
+}
+EOF
+    return 0
+  fi
+
+  if is_reality_mode; then
+    security_block="$(cat <<EOF
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "$(json_escape "${REALITY_DEST}")",
+          "xver": 0,
+$(build_reality_server_names_block)
+          "privateKey": "$(json_escape "${REALITY_PRIVATE_KEY}")",
+          "shortIds": [
+            "$(json_escape "${SHORT_ID}")"
+          ]
+        },
+EOF
+)"
+  else
+    security_block="$(cat <<EOF
+        "security": "tls",
+        "tlsSettings": {
+          "certificates": [
+            {
+              "certificateFile": "$(json_escape "${TLS_CERT_FILE}")",
+              "keyFile": "$(json_escape "${TLS_KEY_FILE}")"
+            }
+          ]
+        },
+EOF
+)"
+  fi
+
+  cat > "${CONFIG_FILE}" <<EOF
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "tag": "vless-xhttp-in",
+      "port": ${PORT},
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "$(json_escape "${UUID}")"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "xhttp",
+${security_block}
+        "xhttpSettings": {
+          "path": "$(json_escape "${XHTTP_PATH}")",
+          "mode": "$(json_escape "${XHTTP_MODE}")"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls",
+          "quic"
+        ]
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "tag": "direct",
+      "protocol": "freedom"
+    }
+  ]
+}
+EOF
+}
+
+maybe_open_ufw_port() {
+  local download_port
+
+  if command_exists ufw && ufw status 2>/dev/null | grep -q "Status: active"; then
+    ufw allow "${PORT}/tcp" >/dev/null 2>&1 || true
+    log "检测到 UFW 已启用，已尝试放行 ${PORT}/tcp"
+
+    if is_cdn_reality_mode; then
+      download_port="$(current_download_port)"
+      if [[ -n "${download_port}" && "${download_port}" != "${PORT}" ]]; then
+        ufw allow "${download_port}/tcp" >/dev/null 2>&1 || true
+        log "检测到混合模式，已尝试额外放行 ${download_port}/tcp"
+      fi
+    fi
+  fi
+}
+
+build_base_share_link() {
+  local server_host fragment query upload_host
+  local params=()
+
+  server_host="$(format_uri_host "${UPLOAD_ADDRESS}")"
+  params+=("encryption=none")
+  params+=("type=xhttp")
+  params+=("path=$(urlencode "${XHTTP_PATH}")")
+  params+=("mode=$(urlencode "${XHTTP_MODE}")")
+
+  if is_reality_mode; then
+    params+=("security=reality")
+    params+=("sni=$(urlencode "${UPLOAD_SNI:-${SNI}}")")
+    params+=("fp=$(urlencode "${FINGERPRINT}")")
+    params+=("pbk=$(urlencode "${REALITY_PUBLIC_KEY}")")
+    params+=("sid=$(urlencode "${SHORT_ID}")")
+    params+=("spx=$(urlencode "${SPIDERX}")")
+  else
+    params+=("security=tls")
+    params+=("sni=$(urlencode "${UPLOAD_SNI}")")
+    params+=("fp=$(urlencode "${FINGERPRINT}")")
+    params+=("alpn=h2")
+    if is_cdn_reality_mode; then
+      upload_host="$(current_upload_host)"
+      params+=("host=$(urlencode "${upload_host}")")
+    fi
+  fi
+
+  query="$(IFS='&'; printf '%s' "${params[*]}")"
+  fragment="$(urlencode "${NODE_NAME}")"
+
+  printf 'vless://%s@%s:%s?%s#%s\n' \
+    "$(urlencode "${UUID}")" \
+    "${server_host}" \
+    "${PORT}" \
+    "${query}" \
+    "${fragment}"
+}
+
+write_client_patch_file() {
+  local download_port
+
+  if ! is_split_mode; then
+    : > "${CLIENT_PATCH_FILE}"
+    return 0
+  fi
+
+  download_port="$(current_download_port)"
+
+  if is_cdn_reality_mode; then
+    cat > "${CLIENT_PATCH_FILE}" <<EOF
+{
+  "host": "$(json_escape "$(current_upload_host)")",
+  "downloadSettings": {
+    "address": "$(json_escape "${DOWNLOAD_ADDRESS}")",
+    "port": ${download_port},
+    "network": "xhttp",
+    "security": "reality",
+    "realitySettings": {
+      "serverName": "$(json_escape "${DOWNLOAD_SNI}")",
+      "fingerprint": "$(json_escape "${FINGERPRINT}")",
+      "publicKey": "$(json_escape "${REALITY_PUBLIC_KEY}")",
+      "shortId": "$(json_escape "${SHORT_ID}")",
+      "spiderX": "$(json_escape "${SPIDERX}")"
+    },
+    "xhttpSettings": {
+      "path": "$(json_escape "${XHTTP_PATH}")",
+      "mode": "$(json_escape "${XHTTP_MODE}")"
+    }
+  }
+}
+EOF
+    return 0
+  fi
+
+  if download_uses_reality; then
+    cat > "${CLIENT_PATCH_FILE}" <<EOF
+{
+  "downloadSettings": {
+    "address": "$(json_escape "${DOWNLOAD_ADDRESS}")",
+    "port": ${download_port},
+    "network": "xhttp",
+    "security": "reality",
+    "realitySettings": {
+      "serverName": "$(json_escape "${DOWNLOAD_SNI:-${SNI}}")",
+      "fingerprint": "$(json_escape "${FINGERPRINT}")",
+      "publicKey": "$(json_escape "${REALITY_PUBLIC_KEY}")",
+      "shortId": "$(json_escape "${SHORT_ID}")",
+      "spiderX": "$(json_escape "${SPIDERX}")"
+    },
+    "xhttpSettings": {
+      "path": "$(json_escape "${XHTTP_PATH}")",
+      "mode": "$(json_escape "${XHTTP_MODE}")"
+    }
+  }
+}
+EOF
+  else
+    cat > "${CLIENT_PATCH_FILE}" <<EOF
+{
+  "downloadSettings": {
+    "address": "$(json_escape "${DOWNLOAD_ADDRESS}")",
+    "port": ${download_port},
+    "network": "xhttp",
+    "security": "tls",
+    "tlsSettings": {
+      "serverName": "$(json_escape "${DOWNLOAD_SNI}")",
+      "fingerprint": "$(json_escape "${FINGERPRINT}")"
+    },
+    "xhttpSettings": {
+      "path": "$(json_escape "${XHTTP_PATH}")",
+      "mode": "$(json_escape "${XHTTP_MODE}")"
+    }
+  }
+}
+EOF
+  fi
+}
+
+build_client_download_settings_block() {
+  local download_port
+
+  if ! is_split_mode; then
+    return 0
+  fi
+
+  download_port="$(current_download_port)"
+
+  if download_uses_reality; then
+    cat <<EOF
+      "downloadSettings": {
+        "address": "$(json_escape "${DOWNLOAD_ADDRESS}")",
+        "port": ${download_port},
+        "network": "xhttp",
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "$(json_escape "${DOWNLOAD_SNI:-${SNI}}")",
+          "fingerprint": "$(json_escape "${FINGERPRINT}")",
+          "publicKey": "$(json_escape "${REALITY_PUBLIC_KEY}")",
+          "shortId": "$(json_escape "${SHORT_ID}")",
+          "spiderX": "$(json_escape "${SPIDERX}")"
+        },
+        "xhttpSettings": {
+          "path": "$(json_escape "${XHTTP_PATH}")",
+          "mode": "$(json_escape "${XHTTP_MODE}")"
+        }
+      }
+EOF
+  else
+    cat <<EOF
+      "downloadSettings": {
+        "address": "$(json_escape "${DOWNLOAD_ADDRESS}")",
+        "port": ${download_port},
+        "network": "xhttp",
+        "security": "tls",
+        "tlsSettings": {
+          "serverName": "$(json_escape "${DOWNLOAD_SNI}")",
+          "fingerprint": "$(json_escape "${FINGERPRINT}")"
+        },
+        "xhttpSettings": {
+          "path": "$(json_escape "${XHTTP_PATH}")",
+          "mode": "$(json_escape "${XHTTP_MODE}")"
+        }
+      }
+EOF
+  fi
+}
+
+write_client_outbound_file() {
+  local security_block
+  local download_block
+  local host_line=""
+
+  if ! is_xray_mode; then
+    : > "${CLIENT_OUTBOUND_FILE}"
+    return 0
+  fi
+
+  if is_reality_mode; then
+    security_block="$(cat <<EOF
+    "security": "reality",
+    "realitySettings": {
+      "serverName": "$(json_escape "${UPLOAD_SNI:-${SNI}}")",
+      "fingerprint": "$(json_escape "${FINGERPRINT}")",
+      "publicKey": "$(json_escape "${REALITY_PUBLIC_KEY}")",
+      "shortId": "$(json_escape "${SHORT_ID}")",
+      "spiderX": "$(json_escape "${SPIDERX}")"
+    },
+EOF
+)"
+  else
+    security_block="$(cat <<EOF
+    "security": "tls",
+    "tlsSettings": {
+      "serverName": "$(json_escape "${UPLOAD_SNI}")",
+      "fingerprint": "$(json_escape "${FINGERPRINT}")",
+      "alpn": [
+        "h2"
+      ]
+    },
+EOF
+)"
+  fi
+
+  if is_cdn_reality_mode; then
+    host_line="$(cat <<EOF
+      "host": "$(json_escape "$(current_upload_host)")",
+EOF
+)"
+  fi
+
+  download_block="$(build_client_download_settings_block || true)"
+
+  cat > "${CLIENT_OUTBOUND_FILE}" <<EOF
+{
+  "protocol": "vless",
+  "settings": {
+    "vnext": [
+      {
+        "address": "$(json_escape "${UPLOAD_ADDRESS}")",
+        "port": ${PORT},
+        "users": [
+          {
+            "id": "$(json_escape "${UUID}")",
+            "encryption": "none"
+          }
+        ]
+      }
+    ]
+  },
+  "streamSettings": {
+    "network": "xhttp",
+${security_block}
+    "xhttpSettings": {
+${host_line}
+      "path": "$(json_escape "${XHTTP_PATH}")",
+      "mode": "$(json_escape "${XHTTP_MODE}")"$(if [[ -n "${download_block}" ]]; then printf ','; fi)
+${download_block}
+    }
+  }
+}
+EOF
+}
+
+write_client_readme_file() {
+  local link
+  local download_port
+
+  if ! is_xray_mode; then
+    cat > "${CLIENT_README_FILE}" <<EOF
+当前模式是上传代理模式，不直接生成节点链接。
+
+当前机器角色:
+- 模式: $(mode_label)
+- 监听端口: ${PORT}
+- 转发后端: ${BACKEND_ADDRESS}:${BACKEND_PORT}
+
+用法:
+1. 先在 VPS2 运行本脚本，选择“当前机器部署 VPS2 后端”
+2. 再在 VPS1 运行本脚本，选择“当前机器部署 VPS1 上传代理”
+3. 客户端使用 VPS2 后端脚本输出的基础链接和补丁
+EOF
+EOF
+    return 0
+  fi
+
+  link="$(build_base_share_link)"
+  download_port="$(current_download_port)"
+
+  if ! is_split_mode; then
+    cat > "${CLIENT_README_FILE}" <<EOF
+当前模式:
+- $(mode_label)
+
+基础 vless 链接:
+${link}
+
+使用方式:
+1. 直接把上面的链接导入支持 XHTTP 的客户端
+2. 不需要再补 downloadSettings
+
+本机生成文件:
+- 基础链接: ${CLIENT_LINK_FILE}
+- outbound 示例: ${CLIENT_OUTBOUND_FILE}
+EOF
+    return 0
+  fi
+
+  cat > "${CLIENT_README_FILE}" <<EOF
+当前模式:
+- $(mode_label)
+
+基础 vless 链接:
+${link}
+
+这类“上下行分离”模式，标准 vless:// 链接本身不够用。
+正确做法是:
+1. 先导入上面的基础链接
+2. 打开该节点的高级配置 / 自定义 JSON / 底层 outbound
+3. 在该节点的 xhttpSettings 下，补上 ${CLIENT_PATCH_FILE} 里的内容
+
+如果客户端支持直接导入 / 粘贴 outbound JSON:
+- 直接参考 ${CLIENT_OUTBOUND_FILE}
+
+客户端需要补的核心参数:
+- 上传地址: ${UPLOAD_ADDRESS}:${PORT}
+- 上传 SNI: ${UPLOAD_SNI}
+- 上传 Host: $(current_upload_host)
+- 下行地址: ${DOWNLOAD_ADDRESS}:${download_port}
+- 下行 SNI: ${DOWNLOAD_SNI}
+- path: ${XHTTP_PATH}
+- mode: ${XHTTP_MODE}
+- security: $(security_label)
+EOF
+
+  if is_cdn_reality_mode; then
+    cat >> "${CLIENT_README_FILE}" <<EOF
+
+第五项额外说明:
+- 这个补丁文件里同时包含上传侧 host 和下行侧 downloadSettings
+- 当前脚本默认把上传 TLS/CDN 和下行 REALITY 分成两个端口
+- 如果你自己在前面加了 nginx/caddy 做同端口分流，可以再手动把下载端口改成你想要的值
+- 下行 REALITY 公钥: ${REALITY_PUBLIC_KEY}
+- 下行 REALITY ShortId: ${SHORT_ID}
+EOF
+  fi
+
+  cat >> "${CLIENT_README_FILE}" <<EOF
+
+如果客户端完全不支持自定义 JSON:
+- 这类分离上下行模式无法只靠纯 vless:// 链接使用
+- 只能换支持自定义 Xray JSON 的客户端，或回退到普通单 VPS 模式
+EOF
+}
+
+show_summary() {
+  local service_name link download_port
+  service_name="$(active_service_name)"
+  download_port="$(current_download_port)"
+
+  cat <<EOF
+
+部署完成。
+
+当前模式:
+- $(mode_label)
+
+服务信息:
+- 服务名: ${service_name}
+EOF
+
+  if is_xray_mode; then
+    link="$(build_base_share_link)"
+    cat <<EOF
+- Xray: ${XRAY_BIN}
+- 配置文件: ${CONFIG_FILE}
+- systemd: ${XRAY_SERVICE_FILE}
+
+节点参数:
+- 上传地址: ${UPLOAD_ADDRESS}
+- 上传端口: ${PORT}
+- UUID: ${UUID}
+- XHTTP path: ${XHTTP_PATH}
+- XHTTP mode: ${XHTTP_MODE}
+- 节点备注: ${NODE_NAME}
+EOF
+
+    if is_cdn_reality_mode; then
+      cat <<EOF
+- 安全层: 上传 TLS + 下行 REALITY
+- 上传 SNI: ${UPLOAD_SNI}
+- 上传 Host: $(current_upload_host)
+- 下行地址: ${DOWNLOAD_ADDRESS}
+- 下行端口: ${download_port}
+- 下行 SNI: ${DOWNLOAD_SNI}
+- REALITY dest: ${REALITY_DEST}
+- PublicKey: ${REALITY_PUBLIC_KEY}
+- ShortId: ${SHORT_ID}
+- Fingerprint: ${FINGERPRINT}
+- SpiderX: ${SPIDERX}
+- 上传证书: ${TLS_CERT_FILE}
+- 上传私钥: ${TLS_KEY_FILE}
+EOF
+    elif is_reality_mode; then
+      cat <<EOF
+- 安全层: REALITY
+- SNI: ${UPLOAD_SNI:-${SNI}}
+- REALITY dest: ${REALITY_DEST}
+- PublicKey: ${REALITY_PUBLIC_KEY}
+- ShortId: ${SHORT_ID}
+- Fingerprint: ${FINGERPRINT}
+- SpiderX: ${SPIDERX}
+EOF
+      if is_split_mode; then
+        cat <<EOF
+- 下行地址: ${DOWNLOAD_ADDRESS}
+- 下行端口: ${download_port}
+EOF
+      fi
+    else
+      cat <<EOF
+- 安全层: TLS
+- 上传 SNI: ${UPLOAD_SNI}
+- 下行 SNI: ${DOWNLOAD_SNI}
+- Fingerprint: ${FINGERPRINT}
+- 证书: ${TLS_CERT_FILE}
+- 私钥: ${TLS_KEY_FILE}
+EOF
+      if is_split_mode; then
+        cat <<EOF
+- 下行地址: ${DOWNLOAD_ADDRESS}
+- 下行端口: ${download_port}
+EOF
+      fi
+    fi
+
+    cat <<EOF
+
+基础 vless 链接:
+${link}
+
+客户端文件:
+- 基础链接: ${CLIENT_LINK_FILE}
+- 客户端说明: ${CLIENT_README_FILE}
+- outbound JSON: ${CLIENT_OUTBOUND_FILE}
+EOF
+
+    if is_split_mode; then
+      cat <<EOF
+- 分离上下行补丁: ${CLIENT_PATCH_FILE}
+
+使用提醒:
+- 先导入上面的基础链接
+- 再按 ${CLIENT_README_FILE} 的说明补 xhttpSettings
+EOF
+      if is_cdn_reality_mode; then
+        cat <<EOF
+- 第 5 项默认是双端口实现；若想把上传 TLS/CDN 和下载 REALITY 合到同一个 443，需要你自己在前面加 nginx/caddy 分流
+EOF
+      fi
+    else
+      cat <<EOF
+
+使用提醒:
+- 普通单机模式，直接导入上面的链接即可
+EOF
+EOF
+    fi
+  else
+    cat <<EOF
+- 代理配置: ${PROXY_CONFIG_FILE}
+- systemd: ${PROXY_SERVICE_FILE}
+- 监听端口: ${PORT}
+- 转发后端: ${BACKEND_ADDRESS}:${BACKEND_PORT}
+- 当前机器公网地址参考: ${UPLOAD_ADDRESS}
+- 说明文件: ${CLIENT_README_FILE}
+
+使用提醒:
+- 这是上传代理角色，不直接生成节点链接
+- 节点链接和补丁请看 VPS2 后端机器上的输出
+EOF
+  fi
+
+  cat <<EOF
+
+常用操作:
+- 查看状态: systemctl status ${service_name}
+- 重启服务: systemctl restart ${service_name}
+- 查看日志: journalctl -u ${service_name} -f
+- 重新进入菜单: bash ${SCRIPT_NAME}
+EOF
+}
+
+write_client_readme_file() {
+  local link
+  local download_port
+
+  if ! is_xray_mode; then
+    cat > "${CLIENT_README_FILE}" <<EOF
+当前模式是上传代理模式，不直接生成节点链接。
+
+当前机器角色:
+- 模式: $(mode_label)
+- 监听端口: ${PORT}
+- 转发后端: ${BACKEND_ADDRESS}:${BACKEND_PORT}
+
+用法:
+1. 先在 VPS2 运行本脚本，选择“当前机器部署 VPS2 后端”
+2. 再在 VPS1 运行本脚本，选择“当前机器部署 VPS1 上传代理”
+3. 客户端使用 VPS2 后端脚本输出的基础链接和补丁
+EOF
+    return 0
+  fi
+
+  link="$(build_base_share_link)"
+  download_port="$(current_download_port)"
+
+  if ! is_split_mode; then
+    cat > "${CLIENT_README_FILE}" <<EOF
+当前模式:
+- $(mode_label)
+
+基础 vless 链接:
+${link}
+
+使用方式:
+1. 直接把上面的链接导入支持 XHTTP 的客户端
+2. 不需要再补 downloadSettings
+
+本机生成文件:
+- 基础链接: ${CLIENT_LINK_FILE}
+- outbound 示例: ${CLIENT_OUTBOUND_FILE}
+EOF
+    return 0
+  fi
+
+  cat > "${CLIENT_README_FILE}" <<EOF
+当前模式:
+- $(mode_label)
+
+基础 vless 链接:
+${link}
+
+这类“上下行分离”模式，标准 vless:// 链接本身不够用。
+正确做法是:
+1. 先导入上面的基础链接
+2. 打开该节点的高级配置 / 自定义 JSON / 底层 outbound
+3. 在该节点的 xhttpSettings 下，补上 ${CLIENT_PATCH_FILE} 里的内容
+
+如果客户端支持直接导入 / 粘贴 outbound JSON:
+- 直接参考 ${CLIENT_OUTBOUND_FILE}
+
+客户端需要补的核心参数:
+- 上传地址: ${UPLOAD_ADDRESS}:${PORT}
+- 上传 SNI: ${UPLOAD_SNI}
+- 上传 Host: $(current_upload_host)
+- 下行地址: ${DOWNLOAD_ADDRESS}:${download_port}
+- 下行 SNI: ${DOWNLOAD_SNI}
+- path: ${XHTTP_PATH}
+- mode: ${XHTTP_MODE}
+- security: $(security_label)
+EOF
+
+  if is_cdn_reality_mode; then
+    cat >> "${CLIENT_README_FILE}" <<EOF
+
+第五项额外说明:
+- 这个补丁文件里同时包含上传侧 host 和下行侧 downloadSettings
+- 当前脚本默认把上传 TLS/CDN 和下行 REALITY 分成两个端口
+- 如果你自己在前面加了 nginx/caddy 做同端口分流，可以再手动把下载端口改成你想要的值
+- 下行 REALITY 公钥: ${REALITY_PUBLIC_KEY}
+- 下行 REALITY ShortId: ${SHORT_ID}
+EOF
+  fi
+
+  cat >> "${CLIENT_README_FILE}" <<EOF
+
+如果客户端完全不支持自定义 JSON:
+- 这类分离上下行模式无法只靠纯 vless:// 链接使用
+- 只能换支持自定义 Xray JSON 的客户端，或回退到普通单 VPS 模式
+EOF
+}
+
+show_summary() {
+  local service_name link download_port
+  service_name="$(active_service_name)"
+  download_port="$(current_download_port)"
+
+  cat <<EOF
+
+部署完成。
+
+当前模式:
+- $(mode_label)
+
+服务信息:
+- 服务名: ${service_name}
+EOF
+
+  if is_xray_mode; then
+    link="$(build_base_share_link)"
+    cat <<EOF
+- Xray: ${XRAY_BIN}
+- 配置文件: ${CONFIG_FILE}
+- systemd: ${XRAY_SERVICE_FILE}
+
+节点参数:
+- 上传地址: ${UPLOAD_ADDRESS}
+- 上传端口: ${PORT}
+- UUID: ${UUID}
+- XHTTP path: ${XHTTP_PATH}
+- XHTTP mode: ${XHTTP_MODE}
+- 节点备注: ${NODE_NAME}
+EOF
+
+    if is_cdn_reality_mode; then
+      cat <<EOF
+- 安全层: 上传 TLS + 下行 REALITY
+- 上传 SNI: ${UPLOAD_SNI}
+- 上传 Host: $(current_upload_host)
+- 下行地址: ${DOWNLOAD_ADDRESS}
+- 下行端口: ${download_port}
+- 下行 SNI: ${DOWNLOAD_SNI}
+- REALITY dest: ${REALITY_DEST}
+- PublicKey: ${REALITY_PUBLIC_KEY}
+- ShortId: ${SHORT_ID}
+- Fingerprint: ${FINGERPRINT}
+- SpiderX: ${SPIDERX}
+- 上传证书: ${TLS_CERT_FILE}
+- 上传私钥: ${TLS_KEY_FILE}
+EOF
+    elif is_reality_mode; then
+      cat <<EOF
+- 安全层: REALITY
+- SNI: ${UPLOAD_SNI:-${SNI}}
+- REALITY dest: ${REALITY_DEST}
+- PublicKey: ${REALITY_PUBLIC_KEY}
+- ShortId: ${SHORT_ID}
+- Fingerprint: ${FINGERPRINT}
+- SpiderX: ${SPIDERX}
+EOF
+      if is_split_mode; then
+        cat <<EOF
+- 下行地址: ${DOWNLOAD_ADDRESS}
+- 下行端口: ${download_port}
+EOF
+      fi
+    else
+      cat <<EOF
+- 安全层: TLS
+- 上传 SNI: ${UPLOAD_SNI}
+- 下行 SNI: ${DOWNLOAD_SNI}
+- Fingerprint: ${FINGERPRINT}
+- 证书: ${TLS_CERT_FILE}
+- 私钥: ${TLS_KEY_FILE}
+EOF
+      if is_split_mode; then
+        cat <<EOF
+- 下行地址: ${DOWNLOAD_ADDRESS}
+- 下行端口: ${download_port}
+EOF
+      fi
+    fi
+
+    cat <<EOF
+
+基础 vless 链接:
+${link}
+
+客户端文件:
+- 基础链接: ${CLIENT_LINK_FILE}
+- 客户端说明: ${CLIENT_README_FILE}
+- outbound JSON: ${CLIENT_OUTBOUND_FILE}
+EOF
+
+    if is_split_mode; then
+      cat <<EOF
+- 分离上下行补丁: ${CLIENT_PATCH_FILE}
+
+使用提醒:
+- 先导入上面的基础链接
+- 再按 ${CLIENT_README_FILE} 的说明补 xhttpSettings
+EOF
+      if is_cdn_reality_mode; then
+        cat <<EOF
+- 第 5 项默认是双端口实现；若想把上传 TLS/CDN 和下载 REALITY 合到同一个 443，需要你自己在前面加 nginx/caddy 分流
+EOF
+      fi
+    else
+      cat <<EOF
+
+使用提醒:
+- 普通单机模式，直接导入上面的链接即可
+EOF
+    fi
+  else
+    cat <<EOF
+- 代理配置: ${PROXY_CONFIG_FILE}
+- systemd: ${PROXY_SERVICE_FILE}
+- 监听端口: ${PORT}
+- 转发后端: ${BACKEND_ADDRESS}:${BACKEND_PORT}
+- 当前机器公网地址参考: ${UPLOAD_ADDRESS}
+- 说明文件: ${CLIENT_README_FILE}
+
+使用提醒:
+- 这是上传代理角色，不直接生成节点链接
+- 节点链接和补丁请看 VPS2 后端机器上的输出
+EOF
+  fi
+
+  cat <<EOF
+
+常用操作:
+- 查看状态: systemctl status ${service_name}
+- 重启服务: systemctl restart ${service_name}
+- 查看日志: journalctl -u ${service_name} -f
+- 重新进入菜单: bash ${SCRIPT_NAME}
+EOF
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
